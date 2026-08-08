@@ -1,0 +1,21 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <div class="sd-center-message">
+                        <h1>Erişim reddedildi</h1>
+                        <p class="text-secondary">Bu sayfa için gerekli role sahip değilsiniz.</p>
+                        <a class="btn btn-outline-secondary" href="/apis">Kayıtlı API'lere dön</a>
+                    </div>
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

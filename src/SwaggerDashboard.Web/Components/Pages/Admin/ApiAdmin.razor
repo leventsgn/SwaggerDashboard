@@ -1,0 +1,286 @@
+@page "/admin/apis"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = Roles.Admin)]
+@using SwaggerDashboard.Infrastructure.Services
+@inject IApiDefinitionService DefinitionService
+@inject ISwaggerRefreshService RefreshService
+@inject CurrentUserAccessor CurrentUserAccessor
+
+<PageTitle>API yönetimi - Swagger Dashboard</PageTitle>
+
+<div class="sd-page">
+    <div class="sd-page-head">
+        <h1>API yönetimi</h1>
+        <button class="btn btn-primary" @onclick="() => _showNew = !_showNew">
+            @(_showNew ? "Vazgeç" : "Yeni API")
+        </button>
+    </div>
+
+    @if (_message is not null)
+    {
+        <div class="alert @(_messageIsError ? "alert-danger" : "alert-success") py-2">@_message</div>
+    }
+
+    @if (_showNew)
+    {
+        <div class="sd-panel">
+            <h3>Yeni API kaydı</h3>
+            <div class="sd-form-grid">
+                <label>Swagger adresi *</label>
+                <input class="form-control" @bind="_new.SwaggerUrl" placeholder="https://api.company.com/swagger" />
+
+                <label>Ad</label>
+                <input class="form-control" @bind="_new.Name" placeholder="Boş bırakılırsa dokümandan alınır" />
+
+                <label>Açıklama</label>
+                <input class="form-control" @bind="_new.Description" />
+
+                <label>Route adı</label>
+                <input class="form-control" @bind="_new.RouteName" placeholder="customer-api (isteğe bağlı kısa yol)" />
+
+                <label>Taban adres</label>
+                <input class="form-control" @bind="_new.BaseUrl" placeholder="Boş bırakılırsa dokümandaki servers alanından alınır" />
+
+                <label>İzinli roller</label>
+                <input class="form-control" @bind="_new.AllowedRoles" placeholder="Boş bırakılırsa tüm roller görebilir" />
+            </div>
+
+            <div class="sd-actions">
+                <button class="btn btn-primary" disabled="@_busy" @onclick="CreateAsync">
+                    @(_busy ? "Bağlantı test ediliyor..." : "Test et ve kaydet")
+                </button>
+                <span class="text-secondary small">
+                    Kayıttan önce swagger adresine bağlanılır ve doküman ayrıştırılır.
+                </span>
+            </div>
+        </div>
+    }
+
+    @if (_definitions is null)
+    {
+        <p class="text-secondary">Yükleniyor...</p>
+    }
+    else
+    {
+        <table class="table table-sm sd-table">
+            <thead>
+            <tr>
+                <th>Ad</th>
+                <th>Route</th>
+                <th>Endpoint</th>
+                <th>Hash</th>
+                <th>Son kontrol</th>
+                <th>Durum</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var definition in _definitions)
+            {
+                <tr>
+                    <td>
+                        <a href="/@ApiDefinitionService.BuildRoute(definition)">@definition.Name</a>
+                        <div class="small text-secondary sd-break">@definition.SwaggerUrlNormalized</div>
+                    </td>
+                    <td><code>@ApiDefinitionService.BuildRoute(definition)</code></td>
+                    <td>@definition.EndpointCount</td>
+                    <td><code title="@definition.SwaggerHash">@Short(definition.SwaggerHash)</code></td>
+                    <td>@definition.LastSwaggerCheckAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        @if (definition.IsActive)
+                        {
+                            <span class="badge text-bg-success">Aktif</span>
+                        }
+                        else
+                        {
+                            <span class="badge text-bg-secondary">Pasif</span>
+                        }
+                    </td>
+                    <td class="sd-row-actions">
+                        <button class="btn btn-sm btn-outline-primary" disabled="@_busy"
+                                @onclick="() => RefreshAsync(definition.Id)">Swagger Güncelle</button>
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@_busy"
+                                @onclick="() => RebuildAsync(definition.Id)">Yeniden Oluştur</button>
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@_busy"
+                                @onclick="() => ToggleActiveAsync(definition)">
+                            @(definition.IsActive ? "Pasifleştir" : "Aktifleştir")
+                        </button>
+                        <a class="btn btn-sm btn-outline-secondary" href="/admin/apis/@definition.Id">Düzenle</a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+
+    @if (_diff is not null && _diff.HasChanges)
+    {
+        <div class="sd-panel">
+            <h3>Değişiklikler</h3>
+            @if (_diff.Added.Count > 0)
+            {
+                <p><strong>Eklenen (@_diff.Added.Count):</strong> @string.Join(", ", _diff.Added)</p>
+            }
+            @if (_diff.Removed.Count > 0)
+            {
+                <p><strong>Silinen (@_diff.Removed.Count):</strong> @string.Join(", ", _diff.Removed)</p>
+            }
+            @if (_diff.Modified.Count > 0)
+            {
+                <p><strong>Değişen (@_diff.Modified.Count):</strong> @string.Join(", ", _diff.Modified)</p>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<ApiDefinition>? _definitions;
+    private RegisterApiForm _new = new();
+    private EndpointDiff? _diff;
+    private string? _message;
+    private bool _messageIsError;
+    private bool _showNew;
+    private bool _busy;
+    private CurrentUser _user = new(null, null, null, false);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await CurrentUserAccessor.GetAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _definitions = await DefinitionService.ListAsync(includeInactive: true);
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _message = null;
+        _diff = null;
+
+        try
+        {
+            var result = await DefinitionService.RegisterAsync(new RegisterApiRequest
+            {
+                SwaggerUrl = _new.SwaggerUrl,
+                Name = Empty(_new.Name),
+                Description = Empty(_new.Description),
+                RouteName = Empty(_new.RouteName),
+                BaseUrl = Empty(_new.BaseUrl),
+                AllowedRoles = Empty(_new.AllowedRoles),
+                Actor = _user.UserName,
+            });
+
+            if (result.Success && result.Definition is not null)
+            {
+                Report($"'{result.Definition.Name}' kaydedildi. {result.Definition.EndpointCount} endpoint bulundu.", false);
+                _new = new RegisterApiForm();
+                _showNew = false;
+                await ReloadAsync();
+            }
+            else
+            {
+                Report(result.Error ?? "Kayıt başarısız.", true);
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RefreshAsync(int id)
+    {
+        _busy = true;
+        _diff = null;
+
+        try
+        {
+            var result = await RefreshService.RefreshAsync(id, _user.UserName);
+
+            if (!result.Success)
+            {
+                Report(result.Error ?? "Güncelleme başarısız.", true);
+            }
+            else if (!result.Changed)
+            {
+                Report("Swagger dokümanında değişiklik bulunmadı; dashboard yeniden oluşturulmadı.", false);
+            }
+            else
+            {
+                _diff = result.Diff;
+                Report("Doküman değişti, dashboard ve endpointler güncellendi.", false);
+                await ReloadAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RebuildAsync(int id)
+    {
+        _busy = true;
+        _diff = null;
+
+        try
+        {
+            var result = await RefreshService.RebuildAsync(id, _user.UserName);
+
+            if (result.Success)
+            {
+                _diff = result.Diff;
+                Report("Dashboard hash kontrolünden bağımsız olarak yeniden oluşturuldu.", false);
+                await ReloadAsync();
+            }
+            else
+            {
+                Report(result.Error ?? "Yeniden oluşturma başarısız.", true);
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleActiveAsync(ApiDefinition definition)
+    {
+        _busy = true;
+
+        try
+        {
+            await DefinitionService.SetActiveAsync(definition.Id, !definition.IsActive, _user.UserName);
+            await ReloadAsync();
+            Report(definition.IsActive ? "API pasifleştirildi." : "API aktifleştirildi.", false);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Report(string message, bool isError)
+    {
+        _message = message;
+        _messageIsError = isError;
+    }
+
+    private static string? Empty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string Short(string? hash) =>
+        string.IsNullOrEmpty(hash) ? "-" : hash[..Math.Min(10, hash.Length)];
+
+    private class RegisterApiForm
+    {
+        public string SwaggerUrl { get; set; } = string.Empty;
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public string? RouteName { get; set; }
+        public string? BaseUrl { get; set; }
+        public string? AllowedRoles { get; set; }
+    }
+}

@@ -1,0 +1,176 @@
+@* Left panel: API context, environment, search, tag groups and favourites. *@
+
+<aside class="sd-left">
+    <div class="sd-left-head">
+        <h1 class="sd-api-name" title="@Definition.SwaggerUrlNormalized">@Definition.Name</h1>
+        <div class="sd-api-meta">
+            <span class="badge text-bg-secondary">@Definition.ApiVersion</span>
+            <span class="badge text-bg-light">@Dashboard.Operations.Count endpoint</span>
+        </div>
+    </div>
+
+    @if (Environments.Count > 1)
+    {
+        <select class="form-select form-select-sm mb-2" value="@SelectedEnvironment"
+                @onchange="args => OnEnvironmentChange.InvokeAsync(args.Value?.ToString() ?? string.Empty)">
+            @foreach (var environment in Environments)
+            {
+                <option value="@environment.Name">@environment.Name</option>
+            }
+        </select>
+    }
+
+    <input class="form-control form-control-sm sd-search" type="search" placeholder="Ara: path, özet, operationId"
+           value="@_search" @oninput="OnSearchInput" />
+
+    <div class="sd-filters">
+        @foreach (var method in AvailableMethods)
+        {
+            <button type="button"
+                    class="sd-method-chip @MethodClass(method) @(_methodFilter.Contains(method) ? "active" : null)"
+                    @onclick="() => ToggleMethod(method)">
+                @method
+            </button>
+        }
+    </div>
+
+    <div class="sd-filters">
+        <label class="sd-check"><input type="checkbox" checked="@_onlyDeprecated" @onchange="ToggleDeprecated" /> Deprecated</label>
+        <label class="sd-check"><input type="checkbox" checked="@_onlyAuth" @onchange="ToggleAuth" /> Auth gerekli</label>
+    </div>
+
+    <nav class="sd-endpoints">
+        @if (Matches.Count == 0)
+        {
+            <p class="text-secondary small px-2">Eşleşen endpoint yok.</p>
+        }
+
+        @foreach (var group in Grouped)
+        {
+            <details open="@(Grouped.Count <= 8 || group.Value.Any(o => o.Slug == SelectedSlug))">
+                <summary>@group.Key <span class="sd-count">@group.Value.Count</span></summary>
+                <ul>
+                    @foreach (var operation in group.Value)
+                    {
+                        <li>
+                            <button type="button"
+                                    class="sd-endpoint @(operation.Slug == SelectedSlug ? "selected" : null)"
+                                    @onclick="() => OnSelect.InvokeAsync(operation.Slug)">
+                                <span class="sd-method @MethodClass(operation.Method)">@operation.Method</span>
+                                <span class="sd-path">@operation.Path</span>
+                                @if (operation.Deprecated)
+                                {
+                                    <span class="sd-deprecated" title="Deprecated">⚠</span>
+                                }
+                            </button>
+                        </li>
+                    }
+                </ul>
+            </details>
+        }
+    </nav>
+</aside>
+
+@code {
+    [Parameter, EditorRequired]
+    public DashboardDocument Dashboard { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public ApiDefinition Definition { get; set; } = default!;
+
+    [Parameter]
+    public string? SelectedSlug { get; set; }
+
+    [Parameter]
+    public List<ApiEnvironment> Environments { get; set; } = [];
+
+    [Parameter]
+    public string? SelectedEnvironment { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelect { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnEnvironmentChange { get; set; }
+
+    private string _search = string.Empty;
+    private readonly HashSet<string> _methodFilter = new(StringComparer.OrdinalIgnoreCase);
+    private bool _onlyDeprecated;
+    private bool _onlyAuth;
+
+    private IReadOnlyList<string> AvailableMethods =>
+        Dashboard.Operations.Select(o => o.Method).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(m => m, StringComparer.OrdinalIgnoreCase).ToList();
+
+    private List<DashboardOperation> Matches => Dashboard.Operations.Where(Match).ToList();
+
+    private Dictionary<string, List<DashboardOperation>> Grouped =>
+        Matches.GroupBy(o => o.Tag, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+    private bool Match(DashboardOperation operation)
+    {
+        if (_methodFilter.Count > 0 && !_methodFilter.Contains(operation.Method))
+        {
+            return false;
+        }
+
+        if (_onlyDeprecated && !operation.Deprecated)
+        {
+            return false;
+        }
+
+        if (_onlyAuth && !operation.RequiresAuthentication)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_search))
+        {
+            return true;
+        }
+
+        var term = _search.Trim();
+
+        return Contains(operation.Path, term)
+               || Contains(operation.Summary, term)
+               || Contains(operation.Description, term)
+               || Contains(operation.OperationId, term)
+               || Contains(operation.Tag, term)
+               || Contains(operation.Method, term);
+    }
+
+    private static bool Contains(string? value, string term) =>
+        value is not null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
+
+    private void OnSearchInput(ChangeEventArgs args) => _search = args.Value?.ToString() ?? string.Empty;
+
+    private void ToggleMethod(string method)
+    {
+        if (!_methodFilter.Add(method))
+        {
+            _methodFilter.Remove(method);
+        }
+    }
+
+    private void ToggleDeprecated(ChangeEventArgs args) => _onlyDeprecated = args.Value is true;
+
+    private void ToggleAuth(ChangeEventArgs args) => _onlyAuth = args.Value is true;
+
+    /// <summary>
+    /// Colour is paired with the method text everywhere, never used on its own, so the
+    /// method stays readable without relying on colour perception.
+    /// </summary>
+    internal static string MethodClass(string method) => method.ToUpperInvariant() switch
+    {
+        "GET" => "m-get",
+        "POST" => "m-post",
+        "PUT" => "m-put",
+        "PATCH" => "m-patch",
+        "DELETE" => "m-delete",
+        "HEAD" => "m-head",
+        "OPTIONS" => "m-options",
+        _ => "m-other",
+    };
+}

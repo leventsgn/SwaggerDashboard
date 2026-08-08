@@ -1,0 +1,41 @@
+@inherits LayoutComponentBase
+
+<div class="sd-shell">
+    <header class="sd-topbar">
+        <a class="sd-brand" href="/apis">
+            <span class="sd-brand-mark">SD</span>
+            <span class="sd-brand-text">Swagger Dashboard</span>
+        </a>
+
+        <nav class="sd-topnav">
+            <a href="/apis">API'ler</a>
+            <AuthorizeView Roles="@Roles.Admin">
+                <a href="/admin/apis">Yönetim</a>
+                <a href="/admin/logs">Loglar</a>
+                <a href="/admin/users">Kullanıcılar</a>
+            </AuthorizeView>
+        </nav>
+
+        <div class="sd-topbar-right">
+            <ThemeToggle />
+            <AuthorizeView>
+                <Authorized>
+                    <span class="sd-user" title="@context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value">
+                        @context.User.Identity?.Name
+                    </span>
+                    <form method="post" action="/account/logout" class="d-inline">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Çıkış</button>
+                    </form>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="btn btn-sm btn-primary" href="/login">Giriş</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </header>
+
+    <main class="sd-main">
+        @Body
+    </main>
+</div>

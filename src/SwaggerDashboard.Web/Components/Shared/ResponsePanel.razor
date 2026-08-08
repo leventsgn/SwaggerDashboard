@@ -1,0 +1,152 @@
+@using System.Text.Json
+@using SwaggerDashboard.Application.Execution
+@inject IJSRuntime Js
+
+@* Right panel: status, timing, headers, body views and generated client code. *@
+
+<aside class="sd-right">
+    @if (Executing)
+    {
+        <div class="sd-response-empty">
+            <div class="spinner-border spinner-border-sm text-primary"></div>
+            <span>İstek gönderiliyor...</span>
+        </div>
+    }
+    else if (Response is null)
+    {
+        <div class="sd-response-empty">
+            <span class="text-secondary">Henüz istek gönderilmedi.</span>
+        </div>
+    }
+    else
+    {
+        <div class="sd-response-head">
+            <span class="sd-status @StatusClass(Response.StatusCode)">
+                @(Response.StatusCode == 0 ? "HATA" : Response.StatusCode.ToString())
+                @Response.ReasonPhrase
+            </span>
+            <span class="sd-timing">@Response.DurationMilliseconds ms</span>
+            <span class="sd-size">@FormatSize(Response.ContentLength)</span>
+        </div>
+
+        @if (Response.Error is not null)
+        {
+            <div class="alert alert-danger py-2 m-2">@Response.Error</div>
+        }
+
+        <div class="sd-tabs">
+            @foreach (var tab in Tabs)
+            {
+                <button type="button" class="@(_tab == tab ? "active" : null)" @onclick="() => _tab = tab">@tab</button>
+            }
+        </div>
+
+        <div class="sd-tab-body">
+            @switch (_tab)
+            {
+                case "Preview":
+                    @if (Response.IsBinary)
+                    {
+                        <p class="text-secondary p-2">
+                            İkili içerik (@Response.ContentType). Önizleme gösterilmiyor.
+                        </p>
+                    }
+                    else if (IsHtml)
+                    {
+                        <div class="p-2">
+                            <p class="small text-secondary">
+                                HTML yanıt yalıtılmış bir çerçevede gösteriliyor; script çalıştırılmaz.
+                            </p>
+                            <div id="sd-html-preview"></div>
+                        </div>
+                    }
+                    else
+                    {
+                        <pre class="sd-pre">@PrettyBody</pre>
+                    }
+                    break;
+
+                case "JSON Tree":
+                    @if (_jsonRoot is not null)
+                    {
+                        <div class="sd-tree">
+                            <JsonTreeNode Name="root" Element="_jsonRoot.Value" Depth="0" />
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-secondary p-2">Yanıt JSON değil.</p>
+                    }
+                    break;
+
+                case "Raw":
+                    <pre class="sd-pre">@(Response.ResponseBody ?? string.Empty)</pre>
+                    break;
+
+                case "Headers":
+                    <table class="table table-sm sd-kv">
+                        <tbody>
+                        @foreach (var header in Response.ResponseHeaders.OrderBy(h => h.Key))
+                        {
+                            <tr>
+                                <th>@header.Key</th>
+                                <td>@header.Value</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                    break;
+
+                case "Request":
+                    <table class="table table-sm sd-kv">
+                        <tbody>
+                        <tr><th>URL</th><td class="sd-break">@Response.RequestUrl</td></tr>
+                        <tr><th>Method</th><td>@Response.RequestMethod</td></tr>
+                        @foreach (var header in Response.RequestHeaders.OrderBy(h => h.Key))
+                        {
+                            <tr>
+                                <th>@header.Key</th>
+                                <td>@MaskIfSecret(header.Key, header.Value)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                    @if (!string.IsNullOrEmpty(Response.RequestBody))
+                    {
+                        <pre class="sd-pre">@Response.RequestBody</pre>
+                    }
+                    break;
+
+                case "Timing":
+                    <table class="table table-sm sd-kv">
+                        <tbody>
+                        <tr><th>Başlangıç</th><td>@Response.StartedAt.ToLocalTime().ToString("HH:mm:ss.fff")</td></tr>
+                        <tr><th>Bitiş</th><td>@Response.CompletedAt.ToLocalTime().ToString("HH:mm:ss.fff")</td></tr>
+                        <tr><th>Süre</th><td>@Response.DurationMilliseconds ms</td></tr>
+                        <tr><th>Boyut</th><td>@FormatSize(Response.ContentLength)</td></tr>
+                        <tr><th>Content-Type</th><td>@Response.ContentType</td></tr>
+                        <tr><th>Kesildi mi</th><td>@(Response.Truncated ? "Evet, boyut sınırı aşıldı" : "Hayır")</td></tr>
+                        </tbody>
+                    </table>
+                    break;
+
+                case "Kod":
+                    <div class="sd-code">
+                        <div class="sd-body-tabs">
+                            @foreach (var language in new[] { "cURL", "C#", "JavaScript" })
+                            {
+                                <button type="button" class="@(_codeLanguage == language ? "active" : null)"
+                                        @onclick="() => _codeLanguage = language">@language</button>
+                            }
+                            <button type="button" @onclick="CopyCode">@(_codeCopied ? "Kopyalandı" : "Kopyala")</button>
+                        </div>
+                        <pre class="sd-pre">@GeneratedCode</pre>
+                        <p class="small text-secondary px-2">
+                            Gizli değerler <code>@CodeSnippetGenerator.SecretPlaceholder</code> ile değiştirildi.
+                        </p>
+                    </div>
+                    break;
+            }
+        </div>
+    }
+</aside>

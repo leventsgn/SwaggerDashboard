@@ -1,0 +1,236 @@
+@page "/{*Target}"
+@rendermode InteractiveServer
+@using SwaggerDashboard.Application.Routing
+@inject IApiDefinitionService DefinitionService
+@inject CurrentUserAccessor CurrentUserAccessor
+@inject NavigationManager Navigation
+
+<PageTitle>@(_dashboard?.Title ?? "Swagger Dashboard")</PageTitle>
+
+@if (_loading)
+{
+    <div class="sd-center-message">
+        <div class="spinner-border text-primary" role="status"></div>
+        <h2>Dashboard hazırlanıyor</h2>
+        <p class="text-secondary">
+            Bu adres ilk kez açılıyor. Swagger dokümanı indiriliyor ve endpointler analiz ediliyor.
+            Sonraki açılışlarda bu adım tekrarlanmayacak.
+        </p>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="sd-center-message">
+        <h2>@_errorTitle</h2>
+        <p class="text-secondary">@_error</p>
+
+        @if (_status == ResolveStatus.ProvisioningForbidden && !_user.IsAuthenticated)
+        {
+            <a class="btn btn-primary" href="@LoginLink()">Giriş yap</a>
+        }
+        else
+        {
+            <a class="btn btn-outline-secondary" href="/apis">Kayıtlı API'lere dön</a>
+        }
+    </div>
+}
+else if (_dashboard is not null && _definition is not null)
+{
+    @if (_wasProvisioned)
+    {
+        <div class="alert alert-success sd-provisioned">
+            <strong>@_definition.Name</strong> ilk kez kaydedildi ve @_dashboard.Operations.Count endpoint bulundu.
+            Bu adresi yer imlerinize ekleyebilirsiniz.
+        </div>
+    }
+
+    <div class="sd-workbench">
+        <EndpointList Dashboard="_dashboard"
+                      Definition="_definition"
+                      SelectedSlug="@_selectedSlug"
+                      Environments="_definition.Environments.ToList()"
+                      SelectedEnvironment="@_environment"
+                      OnSelect="SelectOperation"
+                      OnEnvironmentChange="ChangeEnvironment" />
+
+        <section class="sd-center">
+            @if (_selectedOperation is null)
+            {
+                <div class="sd-empty">
+                    <h3>@_dashboard.Title</h3>
+                    <p class="text-secondary">@_dashboard.Description</p>
+                    <p class="text-secondary">
+                        Soldaki listeden bir endpoint seçin. Toplam @_dashboard.Operations.Count endpoint,
+                        @_dashboard.Tags.Count grup.
+                    </p>
+                    @if (_dashboard.Warnings.Count > 0)
+                    {
+                        <details class="sd-warnings">
+                            <summary>@_dashboard.Warnings.Count ayrıştırma uyarısı</summary>
+                            <ul>
+                                @foreach (var warning in _dashboard.Warnings)
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        </details>
+                    }
+                </div>
+            }
+            else
+            {
+                <EndpointDetail @key="_selectedOperation.Slug"
+                                Operation="_selectedOperation"
+                                Dashboard="_dashboard"
+                                Definition="_definition"
+                                Environment="@_environment"
+                                CanExecute="_user.CanExecute"
+                                UserId="@_user.UserId"
+                                OnExecuted="OnExecuted" />
+            }
+        </section>
+
+        <ResponsePanel Response="_response" Executing="_executing" />
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string? Target { get; set; }
+
+    private DashboardDocument? _dashboard;
+    private ApiDefinition? _definition;
+    private DashboardOperation? _selectedOperation;
+    private ProxyResponse? _response;
+    private CurrentUser _user = new(null, null, null, false);
+
+    private string? _selectedSlug;
+    private string? _environment;
+    private string? _error;
+    private string _errorTitle = "Dashboard açılamadı";
+    private ResolveStatus _status = ResolveStatus.Found;
+    private bool _loading = true;
+    private bool _executing;
+    private bool _wasProvisioned;
+    private string? _loadedTarget;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var target = string.IsNullOrWhiteSpace(Target) ? string.Empty : Target;
+
+        if (string.Equals(target, _loadedTarget, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _loadedTarget = target;
+        await LoadAsync(target);
+    }
+
+    private async Task LoadAsync(string target)
+    {
+        _loading = true;
+        _error = null;
+        _dashboard = null;
+        _definition = null;
+        _selectedOperation = null;
+        _response = null;
+
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            Navigation.NavigateTo("/apis");
+            return;
+        }
+
+        _user = await CurrentUserAccessor.GetAsync();
+
+        // A shareable endpoint link carries the operation slug after the API route, e.g.
+        // /api.company.com/swagger/endpoint/get-customer-by-id.
+        var (routeTail, slug) = SplitEndpointLink(target);
+        _selectedSlug = slug;
+
+        StateHasChanged();
+
+        var result = await DefinitionService.ResolveAsync(routeTail, _user.ToResolveContext());
+
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _status = result.Status;
+            _error = result.Error;
+            _errorTitle = result.Status switch
+            {
+                ResolveStatus.InvalidUrl => "Adres anlaşılamadı",
+                ResolveStatus.NotRegistered => "API kayıtlı değil",
+                ResolveStatus.ProvisioningForbidden => "Yetki gerekiyor",
+                ResolveStatus.ProvisioningFailed => "Swagger dokümanı okunamadı",
+                ResolveStatus.Inactive => "API pasif",
+                ResolveStatus.Forbidden => "Erişim yok",
+                _ => "Dashboard açılamadı",
+            };
+            return;
+        }
+
+        _definition = result.Definition;
+        _dashboard = result.Dashboard;
+        _wasProvisioned = result.WasProvisioned;
+        _environment = _definition!.Environments.FirstOrDefault(e => e.IsDefault)?.Name
+                       ?? _definition.Environments.FirstOrDefault()?.Name;
+
+        if (_selectedSlug is not null)
+        {
+            _selectedOperation = _dashboard!.Operations
+                .FirstOrDefault(o => string.Equals(o.Slug, _selectedSlug, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
+    /// Splits "host/path/endpoint/slug" into the API route and the operation slug.
+    /// </summary>
+    /// <remarks>
+    /// The last occurrence is used so that an API whose own path contains "endpoint" still
+    /// resolves; only the trailing marker is treated as the link suffix.
+    /// </remarks>
+    internal static (string RouteTail, string? Slug) SplitEndpointLink(string target)
+    {
+        const string marker = "/endpoint/";
+        var index = target.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+
+        if (index < 0)
+        {
+            return (target, null);
+        }
+
+        var slug = target[(index + marker.Length)..].Trim('/');
+
+        return slug.Length == 0 || slug.Contains('/')
+            ? (target, null)
+            : (target[..index], slug);
+    }
+
+    private void SelectOperation(string slug)
+    {
+        _selectedSlug = slug;
+        _selectedOperation = _dashboard?.Operations
+            .FirstOrDefault(o => string.Equals(o.Slug, slug, StringComparison.OrdinalIgnoreCase));
+        _response = null;
+    }
+
+    private void ChangeEnvironment(string environment)
+    {
+        _environment = environment;
+    }
+
+    private void OnExecuted(ProxyResponse? response)
+    {
+        _executing = response is null;
+        _response = response;
+    }
+
+    private string LoginLink()
+    {
+        var returnUrl = Uri.EscapeDataString(new Uri(Navigation.Uri).PathAndQuery);
+        return $"/login?returnUrl={returnUrl}";
+    }
+}

@@ -1,0 +1,574 @@
+@using System.Text.Json.Nodes
+@using SwaggerDashboard.Application.Execution
+@using SwaggerDashboard.Application.Routing
+@using SwaggerDashboard.Infrastructure.Services
+@inject IApiProxyService ProxyService
+@inject IApiCredentialStore CredentialStore
+@inject CurrentUserAccessor CurrentUserAccessor
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+
+@* Centre panel: operation metadata, generated request form, auth and the run button. *@
+
+<div class="sd-detail">
+    <header class="sd-detail-head">
+        <div class="sd-detail-title">
+            <span class="sd-method @EndpointList.MethodClass(Operation.Method)">@Operation.Method</span>
+            <code class="sd-detail-path">@Operation.Path</code>
+        </div>
+
+        @if (Operation.Deprecated)
+        {
+            <div class="alert alert-warning py-1 px-2 small mb-2">
+                Bu endpoint <strong>deprecated</strong> olarak işaretlenmiş.
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Operation.Summary))
+        {
+            <p class="sd-summary">@Operation.Summary</p>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Operation.Description))
+        {
+            <p class="sd-description">@Operation.Description</p>
+        }
+
+        <div class="sd-detail-meta">
+            @if (!string.IsNullOrWhiteSpace(Operation.OperationId))
+            {
+                <span>operationId: <code>@Operation.OperationId</code></span>
+            }
+            <span>tag: <code>@Operation.Tag</code></span>
+            <button type="button" class="btn btn-sm btn-link p-0" @onclick="CopyShareLink">
+                @(_shareCopied ? "Bağlantı kopyalandı" : "Paylaşılabilir bağlantı")
+            </button>
+        </div>
+    </header>
+
+    @if (_validationError is not null)
+    {
+        <div class="alert alert-danger py-2">@_validationError</div>
+    }
+
+    @foreach (var location in new[] { ParameterLocations.Path, ParameterLocations.Query, ParameterLocations.Header, ParameterLocations.Cookie })
+    {
+        var parameters = Operation.Parameters.Where(p => p.In == location).ToList();
+        if (parameters.Count == 0)
+        {
+            continue;
+        }
+
+        <section class="sd-section">
+            <h4>@LocationLabel(location)</h4>
+            @foreach (var parameter in parameters)
+            {
+                <SchemaField Node="_parameterNodes[ParameterKey(parameter)]" OnChanged="OnFormChanged" />
+            }
+        </section>
+    }
+
+    @if (Operation.RequestBody is not null && _bodyContent is not null)
+    {
+        <section class="sd-section">
+            <h4>
+                Request Body
+                @if (Operation.RequestBody.Required)
+                {
+                    <span class="sd-required">*</span>
+                }
+            </h4>
+
+            @if (Operation.RequestBody.Contents.Count > 1)
+            {
+                <select class="form-select form-select-sm mb-2" value="@_contentType" @onchange="ChangeContentType">
+                    @foreach (var content in Operation.RequestBody.Contents)
+                    {
+                        <option value="@content.ContentType">@content.ContentType</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <div class="sd-content-type">@_contentType</div>
+            }
+
+            @if (IsFileUpload)
+            {
+                <div class="sd-upload">
+                    <InputFile OnChange="OnFilesSelected" multiple class="form-control form-control-sm" />
+                    @if (_files.Count > 0)
+                    {
+                        <ul class="small mt-1 mb-0">
+                            @foreach (var file in _files)
+                            {
+                                <li>@file.FileName (@file.Content.Length bayt)</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="sd-body-tabs">
+                    <button type="button" class="@(_rawMode ? null : "active")" @onclick="SwitchToForm">Form</button>
+                    <button type="button" class="@(_rawMode ? "active" : null)" @onclick="SwitchToRaw">Raw JSON</button>
+                </div>
+
+                @if (_rawMode)
+                {
+                    <textarea class="form-control sd-json" rows="14" value="@_rawBody" @onchange="OnRawChanged"></textarea>
+                    @if (_rawParseError is not null)
+                    {
+                        <div class="text-danger small mt-1">@_rawParseError</div>
+                    }
+                }
+                else
+                {
+                    <SchemaField Node="_bodyNode!" OnChanged="OnFormChanged" />
+                }
+            }
+        </section>
+    }
+
+    @if (Operation.RequiresAuthentication || Dashboard.SecuritySchemes.Count > 0)
+    {
+        <section class="sd-section">
+            <h4>Kimlik doğrulama</h4>
+            <div class="sd-auth">
+                <select class="form-select form-select-sm" value="@_authKind" @onchange="ChangeAuthKind">
+                    <option value="@ApiAuthKind.None">Yok</option>
+                    <option value="@ApiAuthKind.Bearer">Bearer token</option>
+                    <option value="@ApiAuthKind.Basic">Basic</option>
+                    <option value="@ApiAuthKind.ApiKey">API Key</option>
+                </select>
+
+                @if (_authKind == ApiAuthKind.Basic)
+                {
+                    <input class="form-control form-control-sm" placeholder="Kullanıcı adı"
+                           value="@_authUserName" @onchange="e => _authUserName = e.Value?.ToString() ?? string.Empty" />
+                }
+
+                @if (_authKind == ApiAuthKind.ApiKey)
+                {
+                    <input class="form-control form-control-sm" placeholder="Parametre adı (ör. X-Api-Key)"
+                           value="@_authParameterName" @onchange="e => _authParameterName = e.Value?.ToString() ?? string.Empty" />
+                    <select class="form-select form-select-sm" value="@_authParameterIn"
+                            @onchange="OnAuthParameterInChanged">
+                        <option value="header">header</option>
+                        <option value="query">query</option>
+                    </select>
+                }
+
+                @if (_authKind != ApiAuthKind.None)
+                {
+                    <input class="form-control form-control-sm" type="password" placeholder="Değer"
+                           value="@_authSecret" @onchange="e => _authSecret = e.Value?.ToString() ?? string.Empty" />
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="SaveCredential">
+                        @(_credentialSaved ? "Kaydedildi" : "Oturuma kaydet")
+                    </button>
+                }
+            </div>
+            <p class="sd-field-help">
+                Girilen değer yalnızca sunucu belleğinde, oturumunuza bağlı olarak tutulur; veritabanına yazılmaz.
+                @if (Operation.SecuritySchemeKeys.Count > 0)
+                {
+                    <span>Bu endpoint şu şemaları istiyor: <code>@string.Join(", ", Operation.SecuritySchemeKeys)</code>.</span>
+                }
+            </p>
+        </section>
+    }
+
+    <div class="sd-actions">
+        @if (CanExecute)
+        {
+            <button type="button" class="btn btn-primary" disabled="@_executing" @onclick="ExecuteAsync">
+                @(_executing ? "Çalışıyor..." : "Çalıştır")
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-primary" disabled>Çalıştır</button>
+            <span class="text-secondary small">Endpoint çalıştırma yetkiniz yok.</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public DashboardOperation Operation { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public DashboardDocument Dashboard { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public ApiDefinition Definition { get; set; } = default!;
+
+    [Parameter]
+    public string? Environment { get; set; }
+
+    [Parameter]
+    public bool CanExecute { get; set; }
+
+    [Parameter]
+    public string? UserId { get; set; }
+
+    [Parameter]
+    public EventCallback<ProxyResponse?> OnExecuted { get; set; }
+
+    private readonly Dictionary<string, FormNode> _parameterNodes = new(StringComparer.Ordinal);
+    private readonly List<ProxyFile> _files = [];
+
+    private FormNode? _bodyNode;
+    private DashboardContent? _bodyContent;
+    private string _contentType = "application/json";
+    private string _rawBody = string.Empty;
+    private string? _rawParseError;
+    private string? _validationError;
+    private bool _rawMode;
+    private bool _executing;
+    private bool _shareCopied;
+    private bool _credentialSaved;
+
+    private ApiAuthKind _authKind = ApiAuthKind.None;
+    private string _authSecret = string.Empty;
+    private string _authUserName = string.Empty;
+    private string _authParameterName = "X-Api-Key";
+    private string _authParameterIn = "header";
+
+    private bool IsFileUpload =>
+        _contentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        foreach (var parameter in Operation.Parameters)
+        {
+            _parameterNodes[ParameterKey(parameter)] =
+                new FormNode(parameter.Schema, parameter.Name, parameter.Required);
+        }
+
+        _bodyContent = Operation.RequestBody?.Contents.FirstOrDefault();
+
+        if (_bodyContent is not null)
+        {
+            _contentType = _bodyContent.ContentType;
+            _bodyNode = new FormNode(_bodyContent.Schema, null, true) { Included = true };
+            _rawBody = _bodyContent.ExampleJson ?? _bodyNode.ToJsonString();
+        }
+
+        LoadStoredCredential();
+    }
+
+    private static string ParameterKey(DashboardParameter parameter) => $"{parameter.In}:{parameter.Name}";
+
+    private static string LocationLabel(string location) => location switch
+    {
+        ParameterLocations.Path => "Path parametreleri",
+        ParameterLocations.Query => "Query parametreleri",
+        ParameterLocations.Header => "Header parametreleri",
+        ParameterLocations.Cookie => "Cookie parametreleri",
+        _ => location,
+    };
+
+    private void OnFormChanged()
+    {
+        // The raw view is regenerated from the node tree so the two views cannot drift.
+        if (_bodyNode is not null)
+        {
+            _rawBody = _bodyNode.ToJsonString();
+            _rawParseError = null;
+        }
+    }
+
+    private void SwitchToForm()
+    {
+        if (_bodyNode is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var parsed = string.IsNullOrWhiteSpace(_rawBody) ? null : JsonNode.Parse(_rawBody);
+            _bodyNode.LoadFrom(parsed);
+            _rawParseError = null;
+            _rawMode = false;
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            // Staying in the raw view keeps the user's text instead of discarding it.
+            _rawParseError = $"JSON geçersiz, forma dönülemedi: {ex.Message}";
+        }
+    }
+
+    private void SwitchToRaw()
+    {
+        if (_bodyNode is not null)
+        {
+            _rawBody = _bodyNode.ToJsonString();
+        }
+
+        _rawMode = true;
+    }
+
+    private void OnRawChanged(ChangeEventArgs args)
+    {
+        _rawBody = args.Value?.ToString() ?? string.Empty;
+        _rawParseError = null;
+    }
+
+    private void ChangeContentType(ChangeEventArgs args)
+    {
+        _contentType = args.Value?.ToString() ?? _contentType;
+        _bodyContent = Operation.RequestBody?.Contents
+            .FirstOrDefault(c => c.ContentType == _contentType) ?? _bodyContent;
+
+        if (_bodyContent is not null)
+        {
+            _bodyNode = new FormNode(_bodyContent.Schema, null, true) { Included = true };
+            _rawBody = _bodyContent.ExampleJson ?? _bodyNode.ToJsonString();
+        }
+
+        _files.Clear();
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs args)
+    {
+        _files.Clear();
+
+        foreach (var file in args.GetMultipleFiles(10))
+        {
+            // Uploads are bounded because the whole file is buffered before forwarding.
+            await using var stream = file.OpenReadStream(maxAllowedSize: 16 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+
+            _files.Add(new ProxyFile(
+                FieldName: FirstFileFieldName(),
+                FileName: file.Name,
+                ContentType: string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                Content: buffer.ToArray()));
+        }
+    }
+
+    private string FirstFileFieldName()
+    {
+        var binaryProperty = _bodyContent?.Schema.Properties
+            .FirstOrDefault(p => p.Schema.Format == "binary" ||
+                                 (p.Schema.Type == SchemaTypes.Array && p.Schema.Items?.Format == "binary"));
+
+        return binaryProperty?.Name ?? "file";
+    }
+
+    private void OnAuthParameterInChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        _authParameterIn = string.IsNullOrWhiteSpace(value) ? "header" : value;
+    }
+
+    private void ChangeAuthKind(ChangeEventArgs args)
+    {
+        _authKind = Enum.TryParse<ApiAuthKind>(args.Value?.ToString(), out var kind) ? kind : ApiAuthKind.None;
+        _credentialSaved = false;
+
+        if (_authKind == ApiAuthKind.ApiKey)
+        {
+            var scheme = Dashboard.SecuritySchemes
+                .FirstOrDefault(s => s.Type.Equals("apiKey", StringComparison.OrdinalIgnoreCase));
+
+            if (scheme is not null)
+            {
+                _authParameterName = scheme.ParameterName ?? _authParameterName;
+                _authParameterIn = scheme.In ?? _authParameterIn;
+            }
+        }
+    }
+
+    private void LoadStoredCredential()
+    {
+        if (UserId is null)
+        {
+            return;
+        }
+
+        var stored = CredentialStore.Get(UserId, Definition.Id);
+        if (stored is null)
+        {
+            return;
+        }
+
+        _authKind = stored.Kind;
+        _authUserName = stored.UserName ?? string.Empty;
+        _authParameterName = stored.ParameterName ?? _authParameterName;
+        _authParameterIn = stored.ParameterIn ?? _authParameterIn;
+        _credentialSaved = true;
+
+        // The secret itself is not read back into the form; it stays server side.
+    }
+
+    private void SaveCredential()
+    {
+        if (UserId is null)
+        {
+            return;
+        }
+
+        if (_authKind == ApiAuthKind.None)
+        {
+            CredentialStore.Clear(UserId, Definition.Id);
+            _credentialSaved = false;
+            return;
+        }
+
+        CredentialStore.Set(UserId, Definition.Id, new ApiCredential
+        {
+            Kind = _authKind,
+            Secret = _authSecret,
+            UserName = _authUserName,
+            ParameterName = _authParameterName,
+            ParameterIn = _authParameterIn,
+        });
+
+        _authSecret = string.Empty;
+        _credentialSaved = true;
+    }
+
+    /// <summary>
+    /// Builds the shareable endpoint link and puts it on the clipboard.
+    /// </summary>
+    private async Task CopyShareLink()
+    {
+        var route = ApiDefinitionService.BuildRoute(Definition);
+        var link = Navigation.BaseUri.TrimEnd('/') + $"/{route}/endpoint/{Operation.Slug}";
+
+        _shareCopied = await Js.InvokeAsync<bool>("swaggerDashboard.copyToClipboard", link);
+
+        if (!_shareCopied)
+        {
+            _validationError = $"Bağlantı kopyalanamadı. Adres: {link}";
+        }
+    }
+
+    private async Task ExecuteAsync()
+    {
+        _validationError = null;
+        _executing = true;
+        await OnExecuted.InvokeAsync(null);
+
+        try
+        {
+            var request = BuildRequest();
+            if (request is null)
+            {
+                return;
+            }
+
+            var response = await ProxyService.ExecuteAsync(request);
+            await OnExecuted.InvokeAsync(response);
+        }
+        finally
+        {
+            _executing = false;
+        }
+    }
+
+    private ProxyRequest? BuildRequest()
+    {
+        var request = new ProxyRequest
+        {
+            ApiDefinitionId = Definition.Id,
+            OperationSlug = Operation.Slug,
+            EnvironmentName = Environment,
+            UserId = UserId,
+            ClientIp = CurrentUserAccessor.ClientIp,
+            ContentType = _contentType,
+            Body = BuildBody(),
+        };
+
+        foreach (var parameter in Operation.Parameters)
+        {
+            var node = _parameterNodes[ParameterKey(parameter)];
+            var value = node.Value;
+
+            if (string.IsNullOrEmpty(value) && !node.IsArray)
+            {
+                if (parameter.Required && parameter.In == ParameterLocations.Path)
+                {
+                    _validationError = $"Zorunlu path parametresi girilmedi: {parameter.Name}";
+                    return null;
+                }
+
+                if (!node.Included)
+                {
+                    continue;
+                }
+            }
+
+            switch (parameter.In)
+            {
+                case ParameterLocations.Path:
+                    request.PathParameters[parameter.Name] = value;
+                    break;
+
+                case ParameterLocations.Header:
+                    request.Headers[parameter.Name] = value;
+                    break;
+
+                case ParameterLocations.Cookie:
+                    request.Cookies[parameter.Name] = value;
+                    break;
+
+                default:
+                    if (node.IsArray)
+                    {
+                        // Array query parameters repeat the key, which is the default
+                        // "form" style with explode enabled.
+                        foreach (var item in node.Items.Where(i => !string.IsNullOrEmpty(i.Value)))
+                        {
+                            request.QueryParameters.Add(new(parameter.Name, item.Value));
+                        }
+                    }
+                    else
+                    {
+                        request.QueryParameters.Add(new(parameter.Name, value));
+                    }
+
+                    break;
+            }
+        }
+
+        foreach (var file in _files)
+        {
+            request.Files.Add(file);
+        }
+
+        if (IsFileUpload && _bodyContent is not null)
+        {
+            foreach (var property in _bodyContent.Schema.Properties.Where(p => p.Schema.Format != "binary"))
+            {
+                var node = _bodyNode?.Children.FirstOrDefault(c => c.Name == property.Name);
+                if (node is not null && !string.IsNullOrEmpty(node.Value))
+                {
+                    request.FormFields.Add(new(property.Name, node.Value));
+                }
+            }
+        }
+
+        return request;
+    }
+
+    private string? BuildBody()
+    {
+        if (Operation.RequestBody is null || IsFileUpload)
+        {
+            return null;
+        }
+
+        if (_rawMode)
+        {
+            return string.IsNullOrWhiteSpace(_rawBody) ? null : _rawBody;
+        }
+
+        return _bodyNode?.ToJsonString();
+    }
+}

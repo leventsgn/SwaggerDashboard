@@ -1,0 +1,29 @@
+@rendermode InteractiveServer
+@inject IJSRuntime Js
+
+<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ToggleAsync" title="Tema değiştir">
+    @(_theme == "dark" ? "Açık tema" : "Koyu tema")
+</button>
+
+@code {
+    private string _theme = "light";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // The stored preference was already applied by the inline script; this only syncs
+        // the button label with what the page is actually showing.
+        _theme = await Js.InvokeAsync<string>("swaggerDashboard.getTheme");
+        StateHasChanged();
+    }
+
+    private async Task ToggleAsync()
+    {
+        _theme = _theme == "dark" ? "light" : "dark";
+        await Js.InvokeVoidAsync("swaggerDashboard.setTheme", _theme);
+    }
+}

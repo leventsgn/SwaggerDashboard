@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Internal helpers are exercised directly by the test project rather than being made
+       public just to be testable. -->
+  <ItemGroup Condition="'$(IsTestProject)' != 'true'">
+    <InternalsVisibleTo Include="SwaggerDashboard.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,86 @@
+@using System.Text.Json
+
+@* One node of the collapsible JSON viewer. *@
+
+@if (Element.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+{
+    <details open="@(Depth < 2)">
+        <summary>
+            <span class="sd-tree-key">@Name</span>
+            <span class="sd-tree-meta">@Summary</span>
+        </summary>
+        <div class="sd-tree-children">
+            @if (Element.ValueKind == JsonValueKind.Object)
+            {
+                @foreach (var property in Element.EnumerateObject().Take(MaxChildren))
+                {
+                    <JsonTreeNode Name="@property.Name" Element="property.Value" Depth="Depth + 1" />
+                }
+            }
+            else
+            {
+                @foreach (var entry in Element.EnumerateArray().Take(MaxChildren).Select((item, index) => (item, index)))
+                {
+                    <JsonTreeNode Name="@($"[{entry.index}]")" Element="entry.item" Depth="Depth + 1" />
+                }
+            }
+
+            @if (ChildCount > MaxChildren)
+            {
+                <div class="sd-tree-more">… @(ChildCount - MaxChildren) öğe daha gösterilmedi</div>
+            }
+        </div>
+    </details>
+}
+else
+{
+    <div class="sd-tree-leaf">
+        <span class="sd-tree-key">@Name</span>
+        <span class="sd-tree-value @ValueClass">@ValueText</span>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Children rendered per node. A large array would otherwise create tens of thousands
+    /// of components and stall the circuit.
+    /// </summary>
+    private const int MaxChildren = 200;
+
+    [Parameter, EditorRequired]
+    public string Name { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public JsonElement Element { get; set; }
+
+    [Parameter]
+    public int Depth { get; set; }
+
+    private int ChildCount => Element.ValueKind switch
+    {
+        JsonValueKind.Object => Element.EnumerateObject().Count(),
+        JsonValueKind.Array => Element.GetArrayLength(),
+        _ => 0,
+    };
+
+    private string Summary => Element.ValueKind == JsonValueKind.Array
+        ? $"dizi · {ChildCount} öğe"
+        : $"nesne · {ChildCount} alan";
+
+    private string ValueText => Element.ValueKind switch
+    {
+        JsonValueKind.String => Element.GetString() ?? string.Empty,
+        JsonValueKind.Null => "null",
+        JsonValueKind.Undefined => "undefined",
+        _ => Element.GetRawText(),
+    };
+
+    private string ValueClass => Element.ValueKind switch
+    {
+        JsonValueKind.String => "v-string",
+        JsonValueKind.Number => "v-number",
+        JsonValueKind.True or JsonValueKind.False => "v-bool",
+        JsonValueKind.Null => "v-null",
+        _ => string.Empty,
+    };
+}

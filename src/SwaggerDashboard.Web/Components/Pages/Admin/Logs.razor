@@ -1,0 +1,133 @@
+@page "/admin/logs"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = Roles.Admin)]
+@inject IRequestLogService LogService
+@inject IApiDefinitionService DefinitionService
+
+<PageTitle>İstek logları - Swagger Dashboard</PageTitle>
+
+<div class="sd-page">
+    <div class="sd-page-head">
+        <h1>İstek logları</h1>
+        <div class="d-flex gap-2">
+            <select class="form-select form-select-sm" value="@_apiFilter" @onchange="OnFilterChanged">
+                <option value="">Tüm API'ler</option>
+                @foreach (var definition in _definitions)
+                {
+                    <option value="@definition.Id">@definition.Name</option>
+                }
+            </select>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ReloadAsync">Yenile</button>
+        </div>
+    </div>
+
+    @if (_logs is null)
+    {
+        <p class="text-secondary">Yükleniyor...</p>
+    }
+    else if (_logs.Count == 0)
+    {
+        <p class="text-secondary">Kayıt yok.</p>
+    }
+    else
+    {
+        <table class="table table-sm sd-table">
+            <thead>
+            <tr>
+                <th>Zaman</th>
+                <th>Kullanıcı</th>
+                <th>Method</th>
+                <th>URL</th>
+                <th>Status</th>
+                <th>Süre</th>
+                <th>IP</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var log in _logs)
+            {
+                <tr class="@(log.IsSuccess ? null : "table-warning")">
+                    <td>@log.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td>@(log.UserId ?? "-")</td>
+                    <td>@log.HttpMethod</td>
+                    <td class="sd-break">@log.RequestUrl</td>
+                    <td>@(log.ResponseStatusCode == 0 ? "hata" : log.ResponseStatusCode.ToString())</td>
+                    <td>@log.DurationMilliseconds ms</td>
+                    <td>@log.ClientIp</td>
+                    <td>
+                        <button class="btn btn-sm btn-link p-0"
+                                @onclick="() => _expanded = _expanded == log.Id ? null : log.Id">
+                            @(_expanded == log.Id ? "Gizle" : "Detay")
+                        </button>
+                    </td>
+                </tr>
+
+                @if (_expanded == log.Id)
+                {
+                    <tr>
+                        <td colspan="8">
+                            <div class="sd-log-detail">
+                                @if (log.ErrorMessage is not null)
+                                {
+                                    <p class="text-danger">@log.ErrorMessage</p>
+                                }
+                                <h5>Request headers</h5>
+                                <pre class="sd-pre">@log.RequestHeadersJson</pre>
+                                <h5>Response headers</h5>
+                                <pre class="sd-pre">@log.ResponseHeadersJson</pre>
+
+                                @if (log.RequestBody is not null)
+                                {
+                                    <h5>Request body @(log.RequestBodyTruncated ? "(kesildi)" : null)</h5>
+                                    <pre class="sd-pre">@log.RequestBody</pre>
+                                }
+
+                                @if (log.ResponseBody is not null)
+                                {
+                                    <h5>Response body @(log.ResponseBodyTruncated ? "(kesildi)" : null)</h5>
+                                    <pre class="sd-pre">@log.ResponseBody</pre>
+                                }
+
+                                @if (log.RequestBody is null && log.ResponseBody is null)
+                                {
+                                    <p class="text-secondary small">
+                                        Gövde loglama kapalı. Açmak için
+                                        <code>SwaggerDashboard:Logging:PersistBodies</code> ayarını kullanın.
+                                    </p>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<ApiRequestLog>? _logs;
+    private IReadOnlyList<ApiDefinition> _definitions = [];
+    private string _apiFilter = string.Empty;
+    private long? _expanded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _definitions = await DefinitionService.ListAsync(includeInactive: true);
+        await ReloadAsync();
+    }
+
+    private async Task OnFilterChanged(ChangeEventArgs args)
+    {
+        _apiFilter = args.Value?.ToString() ?? string.Empty;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        int? apiId = int.TryParse(_apiFilter, out var parsed) ? parsed : null;
+        _logs = await LogService.GetRecentAsync(apiId, 200);
+        _expanded = null;
+    }
+}

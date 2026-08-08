@@ -1,0 +1,309 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using SwaggerDashboard.Application.Abstractions;
+using SwaggerDashboard.Domain.Entities;
+using SwaggerDashboard.Infrastructure;
+using SwaggerDashboard.Infrastructure.Persistence;
+using Xunit;
+
+namespace SwaggerDashboard.Tests;
+
+/// <summary>
+/// Drives the whole stack against a real target API: first visit provisions from a pasted
+/// swagger UI page, later visits read the stored dashboard, and calls go out through the
+/// proxy with logging applied.
+/// </summary>
+public class EndToEndTests : IAsyncLifetime
+{
+    private TargetApiFixture _target = default!;
+    private ServiceProvider _services = default!;
+    private SqliteConnection _connection = default!;
+
+    private static readonly ResolveContext Developer =
+        new("1", "dev", Roles.Developer, IsAuthenticated: true);
+
+    public async Task InitializeAsync()
+    {
+        _target = await TargetApiFixture.StartAsync();
+
+        _connection = new SqliteConnection("Filename=:memory:");
+        _connection.Open();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                // The target runs on loopback over plain http, so the development style
+                // policy is what makes this reachable at all.
+                ["SwaggerDashboard:Outbound:AllowAnyHost"] = "true",
+                ["SwaggerDashboard:Outbound:AllowInsecureHttp"] = "true",
+                ["SwaggerDashboard:Outbound:AllowPrivateNetworks"] = "true",
+                ["SwaggerDashboard:Outbound:TimeoutSeconds"] = "15",
+                ["SwaggerDashboard:Logging:PersistBodies"] = "true",
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.SetMinimumLevel(LogLevel.Warning));
+        services.AddSwaggerDashboardInfrastructure(configuration);
+
+        // Swap the SQL Server context registration for the in-memory SQLite one.
+        foreach (var descriptor in services
+                     .Where(d => d.ServiceType == typeof(DbContextOptions<SwaggerDashboardDbContext>))
+                     .ToList())
+        {
+            services.Remove(descriptor);
+        }
+
+        services.AddDbContext<SwaggerDashboardDbContext>(o => o.UseSqlite(_connection));
+
+        _services = services.BuildServiceProvider();
+
+        using var scope = _services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<SwaggerDashboardDbContext>().Database.EnsureCreatedAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _services.DisposeAsync();
+        _connection.Dispose();
+        await _target.DisposeAsync();
+    }
+
+    private IServiceScope Scope() => _services.CreateScope();
+
+    [Fact]
+    public async Task Pasting_the_swagger_ui_page_provisions_from_the_discovered_document()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+
+        var result = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.True(result.WasProvisioned);
+        Assert.Equal("Item API", result.Dashboard!.Title);
+        Assert.Equal(4, result.Dashboard.Operations.Count);
+
+        // The identity is the JSON document, not the HTML page that was pasted.
+        Assert.EndsWith("/swagger/v1/swagger.json", result.Definition!.SwaggerUrlNormalized);
+
+        // A relative servers entry resolves against the document's own origin.
+        Assert.Equal($"http://{_target.Authority}/v1", result.Definition.BaseUrl);
+    }
+
+    [Fact]
+    public async Task A_get_call_goes_out_through_the_proxy_and_is_logged()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+        var logs = scope.ServiceProvider.GetRequiredService<IRequestLogService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        Assert.True(resolved.IsSuccess, resolved.Error);
+
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        var response = await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition!.Id,
+            OperationSlug = operation.Slug,
+            PathParameters = { ["id"] = "42" },
+            QueryParameters = { new("expand", "tags") },
+            Headers = { ["X-Correlation-Id"] = "corr-1" },
+            UserId = "1",
+            ClientIp = "203.0.113.9",
+        });
+
+        Assert.True(response.Success, response.Error);
+        Assert.Equal(200, response.StatusCode);
+        Assert.Contains("\"id\":\"42\"", response.ResponseBody);
+        Assert.Equal("/v1/items/42", _target.LastRequestPath);
+        Assert.Equal("?expand=tags", _target.LastQueryString);
+        Assert.Equal("corr-1", _target.LastRequestHeaders["X-Correlation-Id"]);
+
+        var recorded = await logs.GetRecentAsync(resolved.Definition.Id, 10);
+        var entry = Assert.Single(recorded);
+        Assert.True(entry.IsSuccess);
+        Assert.Equal("GET", entry.HttpMethod);
+        Assert.Equal("203.0.113.9", entry.ClientIp);
+        Assert.Equal("1", entry.UserId);
+        Assert.NotNull(entry.ApiEndpointId);
+    }
+
+    [Fact]
+    public async Task A_bearer_token_reaches_the_target_but_is_masked_in_the_log()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+        var credentials = scope.ServiceProvider.GetRequiredService<IApiCredentialStore>();
+        var logs = scope.ServiceProvider.GetRequiredService<IRequestLogService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        credentials.Set("1", resolved.Definition!.Id, new ApiCredential
+        {
+            Kind = ApiAuthKind.Bearer,
+            Secret = "top-secret-token",
+        });
+
+        await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition.Id,
+            OperationSlug = operation.Slug,
+            PathParameters = { ["id"] = "7" },
+            UserId = "1",
+        });
+
+        Assert.Equal("Bearer top-secret-token", _target.LastRequestHeaders["Authorization"]);
+
+        var entry = (await logs.GetRecentAsync(resolved.Definition.Id, 1)).Single();
+        Assert.DoesNotContain("top-secret-token", entry.RequestHeadersJson);
+        Assert.Contains("Bearer ***", entry.RequestHeadersJson);
+    }
+
+    [Fact]
+    public async Task A_post_sends_the_json_body_and_returns_the_target_status()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "createItem");
+
+        var response = await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition!.Id,
+            OperationSlug = operation.Slug,
+            Body = """{"name":"Widget","count":3}""",
+            ContentType = "application/json",
+            UserId = "1",
+        });
+
+        Assert.Equal(201, response.StatusCode);
+        Assert.Equal("""{"name":"Widget","count":3}""", _target.LastRequestBody);
+    }
+
+    [Fact]
+    public async Task A_target_error_is_reported_as_a_response_not_an_exception()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "boom");
+
+        var response = await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition!.Id,
+            OperationSlug = operation.Slug,
+            UserId = "1",
+        });
+
+        Assert.False(response.Success);
+        Assert.Equal(500, response.StatusCode);
+        Assert.Null(response.Error);
+    }
+
+    [Fact]
+    public async Task An_html_response_comes_back_as_text_for_the_sandboxed_preview()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "page");
+
+        var response = await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition!.Id,
+            OperationSlug = operation.Slug,
+            UserId = "1",
+        });
+
+        Assert.Contains("text/html", response.ContentType);
+        Assert.Contains("<h1>hello</h1>", response.ResponseBody);
+        Assert.False(response.IsBinary);
+    }
+
+    [Fact]
+    public async Task The_proxy_refuses_an_endpoint_that_is_not_part_of_the_document()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+
+        var response = await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition!.Id,
+            OperationSlug = "made-up-endpoint",
+            UserId = "1",
+        });
+
+        Assert.False(response.Success);
+        Assert.Contains("Endpoint bulunamadı", response.Error);
+    }
+
+    [Fact]
+    public async Task Every_spelling_of_the_address_resolves_to_the_same_registration()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var db = scope.ServiceProvider.GetRequiredService<SwaggerDashboardDbContext>();
+
+        var viaUiPage = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var viaShortForm = await definitions.ResolveAsync($"http://{_target.Authority}/swagger", Developer);
+        var viaDocument = await definitions.ResolveAsync(
+            $"http://{_target.Authority}/swagger/v1/swagger.json", Developer);
+
+        Assert.True(viaUiPage.IsSuccess, viaUiPage.Error);
+        Assert.True(viaShortForm.IsSuccess, viaShortForm.Error);
+        Assert.True(viaDocument.IsSuccess, viaDocument.Error);
+
+        Assert.Equal(viaUiPage.Definition!.Id, viaShortForm.Definition!.Id);
+        Assert.Equal(viaUiPage.Definition.Id, viaDocument.Definition!.Id);
+        Assert.Equal(1, await db.ApiDefinitions.CountAsync());
+
+        // Each spelling is remembered, so none of them pays for discovery twice.
+        Assert.True(await db.ApiUrlAliases.CountAsync() >= 2);
+    }
+
+    [Fact]
+    public async Task An_arbitrary_path_still_resolves_through_the_root_probe()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+
+        // Probing falls back to the well known document locations at the host root, so a
+        // user who pastes any page of an API that exposes swagger normally still lands on
+        // the right dashboard.
+        var result = await definitions.ResolveAsync($"http://{_target.Authority}/nothing-here", Developer);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal("Item API", result.Dashboard!.Title);
+    }
+
+    [Fact]
+    public async Task An_unreachable_host_reports_the_failure_instead_of_registering_anything()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var db = scope.ServiceProvider.GetRequiredService<SwaggerDashboardDbContext>();
+
+        // Port 1 on loopback has nothing listening, so the connection is refused.
+        var result = await definitions.ResolveAsync("http://127.0.0.1:1/swagger", Developer);
+
+        Assert.Equal(ResolveStatus.ProvisioningFailed, result.Status);
+        Assert.Equal(0, await db.ApiDefinitions.CountAsync());
+    }
+}

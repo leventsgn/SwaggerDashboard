@@ -1,0 +1,110 @@
+@page "/apis"
+@rendermode InteractiveServer
+@using SwaggerDashboard.Infrastructure.Services
+@inject IApiDefinitionService DefinitionService
+@inject CurrentUserAccessor CurrentUserAccessor
+@inject NavigationManager Navigation
+
+<PageTitle>API'ler - Swagger Dashboard</PageTitle>
+
+<div class="sd-page">
+    <h1>Kayıtlı API'ler</h1>
+
+    <p class="text-secondary">
+        Bir swagger adresini açmak için normal swagger bağlantınızın <code>https://</code> bölümünü
+        bu sitenin adresiyle değiştirin. Örnek:
+        <code>https://api.company.com/swagger</code> →
+        <code>@BaseAddress/api.company.com/swagger</code>.
+        Adres ilk kez açıldığında dashboard hazırlanır, sonrasında hazır sayfa gösterilir.
+    </p>
+
+    @if (_user.CanProvision)
+    {
+        <div class="sd-quick-open">
+            <input class="form-control" placeholder="https://api.company.com/swagger"
+                   value="@_quickUrl" @oninput="e => _quickUrl = e.Value?.ToString() ?? string.Empty"
+                   @onkeydown="OnQuickKeyDown" />
+            <button class="btn btn-primary" @onclick="OpenQuick" disabled="@string.IsNullOrWhiteSpace(_quickUrl)">
+                Aç
+            </button>
+        </div>
+        @if (_quickError is not null)
+        {
+            <div class="alert alert-danger py-2">@_quickError</div>
+        }
+    }
+
+    @if (_definitions is null)
+    {
+        <p class="text-secondary">Yükleniyor...</p>
+    }
+    else if (_definitions.Count == 0)
+    {
+        <p class="text-secondary">Henüz kayıtlı API yok.</p>
+    }
+    else
+    {
+        <div class="sd-cards">
+            @foreach (var definition in _definitions)
+            {
+                <a class="sd-card" href="/@ApiDefinitionService.BuildRoute(definition)">
+                    <h3>@definition.Name</h3>
+                    <p class="sd-card-desc">@definition.Description</p>
+                    <div class="sd-card-meta">
+                        <span class="badge text-bg-secondary">@definition.EndpointCount endpoint</span>
+                        @if (!string.IsNullOrWhiteSpace(definition.ApiVersion))
+                        {
+                            <span class="badge text-bg-light">v@definition.ApiVersion</span>
+                        }
+                        @if (definition.IsAutoProvisioned)
+                        {
+                            <span class="badge text-bg-info" title="İlk ziyarette otomatik oluşturuldu">otomatik</span>
+                        }
+                    </div>
+                    <code class="sd-card-url">@definition.SwaggerUrlNormalized</code>
+                </a>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<ApiDefinition>? _definitions;
+    private CurrentUser _user = new(null, null, null, false);
+    private string _quickUrl = string.Empty;
+    private string? _quickError;
+
+    private string BaseAddress => Navigation.BaseUri.TrimEnd('/');
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await CurrentUserAccessor.GetAsync();
+        _definitions = await DefinitionService.ListAsync(includeInactive: false);
+    }
+
+    private void OnQuickKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            OpenQuick();
+        }
+    }
+
+    /// <summary>
+    /// Turns a pasted swagger URL into the dashboard route and navigates there, where the
+    /// normal resolve-or-provision flow takes over.
+    /// </summary>
+    private void OpenQuick()
+    {
+        _quickError = null;
+
+        if (!SwaggerDashboard.Application.Routing.SwaggerUrlNormalizer
+                .TryNormalize(_quickUrl, out var uri, out var error))
+        {
+            _quickError = error;
+            return;
+        }
+
+        Navigation.NavigateTo("/" + SwaggerDashboard.Application.Routing.SwaggerUrlNormalizer.ToRouteTail(uri));
+    }
+}

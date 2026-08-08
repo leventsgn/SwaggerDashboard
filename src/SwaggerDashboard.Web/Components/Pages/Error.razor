@@ -1,0 +1,35 @@
+@page "/error"
+@page "/error/{StatusCode:int}"
+
+<PageTitle>Hata - Swagger Dashboard</PageTitle>
+
+<div class="sd-center-message">
+    <h1>@Title</h1>
+    <p class="text-secondary">@Detail</p>
+    <a class="btn btn-outline-secondary" href="/apis">Kayıtlı API'lere dön</a>
+</div>
+
+@code {
+    [Parameter]
+    public int? StatusCode { get; set; }
+
+    private string Title => StatusCode switch
+    {
+        404 => "Sayfa bulunamadı",
+        403 => "Erişim reddedildi",
+        401 => "Giriş gerekiyor",
+        429 => "Çok fazla istek",
+        _ => "Beklenmeyen bir hata oluştu",
+    };
+
+    // Stack traces and exception details stay in the application log; the user only sees
+    // what they can act on.
+    private string Detail => StatusCode switch
+    {
+        404 => "Aradığınız adres bulunamadı.",
+        403 => "Bu kaynağa erişim yetkiniz yok.",
+        401 => "Devam etmek için giriş yapmalısınız.",
+        429 => "Kısa sürede çok fazla istek gönderildi. Bir süre sonra tekrar deneyin.",
+        _ => "İşlem tamamlanamadı. Sorun devam ederse yöneticinize başvurun.",
+    };
+}
