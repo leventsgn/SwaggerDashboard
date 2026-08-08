@@ -102,13 +102,17 @@
     }
     else
     {
+        @* Every constraint is bound to a nullable value so Blazor omits the attribute when
+           the schema does not declare it. Emitting a fallback instead would be actively
+           harmful: maxlength="0" makes the field reject all input. *@
         <input type="@InputType(Node.EffectiveSchema)"
                class="form-control form-control-sm"
                value="@Node.Value"
                placeholder="@Placeholder(Node.EffectiveSchema)"
                min="@Node.EffectiveSchema.Minimum"
                max="@Node.EffectiveSchema.Maximum"
-               maxlength="@(Node.EffectiveSchema.MaxLength ?? 0)"
+               minlength="@Node.EffectiveSchema.MinLength"
+               maxlength="@Node.EffectiveSchema.MaxLength"
                pattern="@Node.EffectiveSchema.Pattern"
                required="@Node.Required"
                @onchange="OnValueChanged" />

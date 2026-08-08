@@ -1,5 +1,10 @@
 @page "/{*Target}"
-@rendermode InteractiveServer
+@* Prerendering is off on purpose. With it on the component resolves once during the static
+   render and again when the circuit starts, so a first visit provisions on the first pass
+   and the second pass finds the record already there: the work is done twice and the
+   "just registered" notice never survives to the interactive render. Without prerendering
+   the page renders once, in the circuit, and the preparing state is actually visible. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using SwaggerDashboard.Application.Routing
 @inject IApiDefinitionService DefinitionService
 @inject CurrentUserAccessor CurrentUserAccessor

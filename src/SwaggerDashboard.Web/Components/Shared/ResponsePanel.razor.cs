@@ -1,4 +1,6 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using SwaggerDashboard.Application.Abstractions;
@@ -84,6 +86,21 @@ public partial class ResponsePanel : IDisposable
         }
     }
 
+    /// <summary>
+    /// Pretty prints a JSON body for display.
+    /// </summary>
+    /// <remarks>
+    /// The default encoder escapes everything outside ASCII, which turns Turkish text into
+    /// \u0131 sequences in the preview. Allowing the full Unicode range keeps the body
+    /// readable; HTML sensitive characters stay escaped, and Blazor encodes the output
+    /// again when it renders it.
+    /// </remarks>
+    private static readonly JsonSerializerOptions DisplayOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
+    };
+
     private static string FormatJson(string? body)
     {
         if (string.IsNullOrWhiteSpace(body))
@@ -94,7 +111,7 @@ public partial class ResponsePanel : IDisposable
         try
         {
             using var document = JsonDocument.Parse(body);
-            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(document.RootElement, DisplayOptions);
         }
         catch (JsonException)
         {

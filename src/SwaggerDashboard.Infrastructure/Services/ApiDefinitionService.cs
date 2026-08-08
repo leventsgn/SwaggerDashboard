@@ -29,6 +29,10 @@ public class ApiDefinitionService : IApiDefinitionService
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+
+        // Summaries and descriptions are often not in English; escaping them to \u
+        // sequences would triple their stored size for no benefit.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All),
     };
 
     private readonly SwaggerDashboardDbContext _db;

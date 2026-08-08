@@ -173,4 +173,18 @@ public class FormNodeTests
 
         Assert.Equal("abc", (string?)node.ToJson());
     }
+
+    [Fact]
+    public void Writes_non_ascii_text_as_itself_rather_than_as_escape_sequences()
+    {
+        var node = new FormNode(Object(Property("name", SchemaTypes.String, required: true)));
+        node.Children[0].Value = "Zeynep Yılmaz İşçi";
+
+        var json = node.ToJsonString();
+
+        // The default encoder would emit \u0131 sequences, making the raw view and the
+        // request log unreadable for anything outside ASCII.
+        Assert.Contains("Zeynep Yılmaz İşçi", json);
+        Assert.DoesNotContain("\\u", json);
+    }
 }

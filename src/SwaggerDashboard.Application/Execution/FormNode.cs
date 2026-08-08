@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using System.Text.Json.Nodes;
 using SwaggerDashboard.Application.Dashboards;
 
@@ -271,11 +273,20 @@ public class FormNode
         Included = true;
     }
 
+    /// <summary>
+    /// Renders the request body. Non-ASCII characters are written as themselves rather than
+    /// as \u escapes, so a body typed in Turkish stays readable in the raw view and in the
+    /// request log.
+    /// </summary>
+    private static readonly JsonSerializerOptions BodyOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
+    };
+
     public string ToJsonString()
     {
         var json = ToJson();
-        return json is null
-            ? "{}"
-            : json.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        return json is null ? "{}" : json.ToJsonString(BodyOptions);
     }
 }
