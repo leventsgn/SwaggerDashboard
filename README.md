@@ -325,6 +325,54 @@ docker compose up --build
 Uygulama `http://localhost:8080` adresinde çalışır. Konteyner ayrıcalıksız kullanıcıyla
 çalışır ve `/health` ucunu kendi kendine yoklar.
 
+## Yayınlama
+
+### Yayına açmadan önce zorunlu dört ayar
+
+| Ayar | Neden |
+| --- | --- |
+| `SwaggerDashboard:Outbound:AllowedHostSuffixes` | Boşsa uygulama zaten başlamaz. Prefix'li URL modeli hedefi kullanıcının belirlemesine izin verdiği için bu liste açık proxy olmayı engelleyen kontroldür. |
+| `SwaggerDashboard:Hosting:BehindReverseProxy` | TLS'i kenarda sonlandıran her platformda gerekir. Olmadan audit logdaki istemci IP'si vekilin adresi olur, paylaşılabilir bağlantılar iç adresi gösterir ve `HTTPS_PORT` tanımlıysa yönlendirme döngüsü oluşur. |
+| `SwaggerDashboard:Hosting:DataProtectionKeyPath` | Kalıcı disk üzerinde olmalı. Yoksa her dağıtımda anahtarlar yenilenir; tüm oturumlar düşer ve giriş formu antiforgery hatası verir. |
+| `SwaggerDashboard:Access:RequireAuthenticationToView` | İnternete açık dağıtımlarda `true` yapın. Varsayılan `false`, iç ağa uygundur; açıkken URL'yi öğrenen herkes iç API'lerinizin endpoint listesini okuyabilir. |
+
+İlk yönetici parolasını `SwaggerDashboard:Seed:AdminPassword` ile verin; vermezseniz rastgele
+bir parola üretilir ve yalnızca bir kez konteyner loguna yazılır.
+
+### Fly.io
+
+Depoda hazır bir `fly.toml` var. `AllowedHostSuffixes` değerini kendi API alan adınızla
+değiştirdikten sonra:
+
+```bash
+fly launch --no-deploy --copy-config      # uygulama adını ve bölgeyi seçin
+fly volumes create swagger_dashboard_data --size 1
+fly secrets set SwaggerDashboard__Seed__AdminPassword='...'
+fly deploy
+```
+
+Blazor Server her açık sekme için canlı bir devre tutar ve SQLite tek yazar kabul eder, bu
+yüzden yapılandırma tek makineyi ayakta tutacak şekilde ayarlıdır (`auto_stop_machines` kapalı,
+`min_machines_running = 1`). Ölçeklenmeniz gerekirse önce SQL Server'a geçin ve cache'i Redis'e
+taşıyın.
+
+### Kendi sunucunuzda Docker ile
+
+```bash
+export MSSQL_SA_PASSWORD='...'
+export ALLOWED_HOST_SUFFIX='company.com'
+export ADMIN_PASSWORD='...'
+docker compose up --build -d
+```
+
+Önüne TLS sonlandıran bir ters vekil koyun (nginx, Caddy, Traefik) ve
+`SwaggerDashboard__Hosting__BehindReverseProxy=true` verin. Vekil WebSocket trafiğine izin
+vermelidir; Blazor Server bunu gerektirir.
+
+Konteyner root olarak başlar, bağlı diskin sahipliğini düzeltir ve uygulamayı ayrıcalıksız
+kullanıcıya (uid 10001) düşürerek çalıştırır. Platformların diski root sahipliğiyle bağlaması
+aksi hâlde uygulamanın veritabanını yazamamasına yol açardı.
+
 ## Üretim dağıtımı
 
 - HTTPS zorunlu; uygulama HSTS ve güvenli çerez politikası uygular. TLS sonlandırma ters

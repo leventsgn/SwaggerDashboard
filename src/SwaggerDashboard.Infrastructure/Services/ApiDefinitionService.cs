@@ -113,6 +113,13 @@ public class ApiDefinitionService : IApiDefinitionService
             return ResolveResult.Failure(ResolveStatus.Inactive, $"'{definition.Name}' pasif durumda.");
         }
 
+        if (_options.CurrentValue.Access.RequireAuthenticationToView && !context.IsAuthenticated)
+        {
+            return ResolveResult.Failure(
+                ResolveStatus.ProvisioningForbidden,
+                "Bu dashboard'u görüntülemek için giriş yapmalısınız.");
+        }
+
         if (!IsVisibleTo(definition, context))
         {
             return ResolveResult.Failure(

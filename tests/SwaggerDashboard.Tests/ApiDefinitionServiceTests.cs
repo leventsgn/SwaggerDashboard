@@ -26,6 +26,7 @@ public class ApiDefinitionServiceTests : IDisposable
     private readonly RecordingDocumentService _documents;
     private readonly MemoryDashboardCache _cache;
     private readonly ApiDefinitionService _service;
+    private readonly StaticOptionsMonitor _settings;
     private readonly HashService _hashService = new();
 
     private static readonly ResolveContext Developer =
@@ -48,8 +49,8 @@ public class ApiDefinitionServiceTests : IDisposable
         _db = new SwaggerDashboardDbContext(options);
         _db.Database.EnsureCreated();
 
-        var settings = new StaticOptionsMonitor(new SwaggerDashboardOptions());
-        _cache = new MemoryDashboardCache(new MemoryCache(new MemoryCacheOptions()), settings);
+        _settings = new StaticOptionsMonitor(new SwaggerDashboardOptions());
+        _cache = new MemoryDashboardCache(new MemoryCache(new MemoryCacheOptions()), _settings);
         _documents = new RecordingDocumentService();
 
         _service = new ApiDefinitionService(
@@ -58,7 +59,7 @@ public class ApiDefinitionServiceTests : IDisposable
             new DashboardGeneratorService(NullLogger<DashboardGeneratorService>.Instance),
             _hashService,
             _cache,
-            settings,
+            _settings,
             NullLogger<ApiDefinitionService>.Instance);
     }
 
@@ -273,6 +274,25 @@ public class ApiDefinitionServiceTests : IDisposable
         Assert.Equal(
             ResolveStatus.Forbidden,
             (await _service.ResolveAsync("api.company.com/swagger", Tester)).Status);
+    }
+
+    [Fact]
+    public async Task Requiring_a_sign_in_hides_registered_dashboards_from_anonymous_visitors()
+    {
+        _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
+        await _service.ResolveAsync("api.company.com/swagger", Developer);
+
+        // Anonymous browsing is fine on an internal network but leaks the endpoint list of
+        // every registered API once the platform is reachable from the public internet.
+        Assert.True((await _service.ResolveAsync("api.company.com/swagger", Anonymous)).IsSuccess);
+
+        _settings.CurrentValue.Access.RequireAuthenticationToView = true;
+
+        var denied = await _service.ResolveAsync("api.company.com/swagger", Anonymous);
+        Assert.Equal(ResolveStatus.ProvisioningForbidden, denied.Status);
+        Assert.Contains("giriş", denied.Error, StringComparison.OrdinalIgnoreCase);
+
+        Assert.True((await _service.ResolveAsync("api.company.com/swagger", Tester)).IsSuccess);
     }
 
     [Fact]

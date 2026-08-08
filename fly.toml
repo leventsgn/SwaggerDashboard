@@ -1,0 +1,53 @@
+# Fly.io deployment. Rename the app before the first deploy:
+#   fly launch --no-deploy --copy-config
+#   fly volumes create swagger_dashboard_data --size 1
+#   fly secrets set SwaggerDashboard__Seed__AdminPassword='...'
+#   fly deploy
+
+app = "swagger-dashboard"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ASPNETCORE_ENVIRONMENT = "Production"
+  ASPNETCORE_URLS = "http://+:8080"
+
+  # SQLite on the mounted volume. Point ConnectionStrings__SwaggerDashboard at a SQL Server
+  # instance instead if you would rather run the supported production database.
+  Database__Provider = "Sqlite"
+  ConnectionStrings__SwaggerDashboard = "Data Source=/data/swagger-dashboard.db"
+
+  # Fly terminates TLS at the edge and forwards plain HTTP, so the application has to read
+  # the forwarded scheme and caller address rather than the ones on the socket.
+  SwaggerDashboard__Hosting__BehindReverseProxy = "true"
+
+  # Without a persistent key ring every deploy signs all users out and breaks the login form.
+  SwaggerDashboard__Hosting__DataProtectionKeyPath = "/data/keys"
+
+  # The platform is reachable from the public internet here, so browsing a dashboard needs a
+  # sign-in too; otherwise anyone who learns a URL can read your internal API surface.
+  SwaggerDashboard__Access__RequireAuthenticationToView = "true"
+
+  # Nothing outbound is reachable until you list your own API domains. The application
+  # refuses to start in production with this empty.
+  SwaggerDashboard__Outbound__AllowedHostSuffixes__0 = "CHANGE-ME.example.com"
+
+[[mounts]]
+  source = "swagger_dashboard_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_start_machines = true
+
+  # Blazor Server keeps a live circuit per open tab and SQLite tolerates exactly one writer,
+  # so this app runs as a single machine that stays up.
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

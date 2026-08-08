@@ -19,19 +19,22 @@ RUN dotnet publish src/SwaggerDashboard.Web/SwaggerDashboard.Web.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
-# The application does not need to write to its own directory, so it runs unprivileged.
+# The application runs unprivileged. The container still starts as root so the entrypoint
+# can take ownership of a mounted volume, which platforms hand over owned by root; it drops
+# to this account before the application starts.
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin dashboard
-USER 10001
 
 COPY --from=build --chown=10001:10001 /app .
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
-    DOTNET_NOLOGO=1
+    DOTNET_NOLOGO=1 \
+    DATA_DIR=/data
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD ["dotnet", "SwaggerDashboard.Web.dll", "--healthcheck"]
+    CMD ["dotnet", "/app/SwaggerDashboard.Web.dll", "--healthcheck"]
 
-ENTRYPOINT ["dotnet", "SwaggerDashboard.Web.dll"]
+ENTRYPOINT ["docker-entrypoint.sh", "dotnet", "SwaggerDashboard.Web.dll"]

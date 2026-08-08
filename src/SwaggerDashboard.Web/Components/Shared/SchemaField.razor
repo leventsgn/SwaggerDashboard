@@ -59,6 +59,12 @@
             }
             @if (Node.Children.Count == 0)
             {
+                @* A schema that declares no properties is a free-form map. There is nothing
+                   to generate here: the keys are whatever the API expects, and inventing
+                   them would produce a request the API rejects. *@
+                <div class="sd-field-help">
+                    Bu gövde serbest biçimli; dokümanda tanımlı alan yok, alanları siz yazmalısınız.
+                </div>
                 <textarea class="form-control form-control-sm sd-json" rows="4" value="@Node.Value"
                           @onchange="OnValueChanged" placeholder="{ }"></textarea>
             }

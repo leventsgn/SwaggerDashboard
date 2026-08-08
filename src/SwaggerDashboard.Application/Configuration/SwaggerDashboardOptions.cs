@@ -11,6 +11,51 @@ public class SwaggerDashboardOptions
     public LoggingOptions Logging { get; set; } = new();
 
     public CacheOptions Cache { get; set; } = new();
+
+    public HostingOptions Hosting { get; set; } = new();
+
+    public AccessOptions Access { get; set; } = new();
+}
+
+public class AccessOptions
+{
+    /// <summary>
+    /// Require a signed-in user before any dashboard is shown.
+    /// </summary>
+    /// <remarks>
+    /// Off by default, which suits a platform reachable only from inside the corporate
+    /// network: anyone who can reach it may read the dashboards, and only the execute and
+    /// register actions need a role. Turn it on whenever the platform is reachable from the
+    /// public internet, otherwise the endpoint list of every registered internal API is
+    /// readable by anyone who learns a URL.
+    /// </remarks>
+    public bool RequireAuthenticationToView { get; set; }
+}
+
+public class HostingOptions
+{
+    /// <summary>
+    /// Trust the X-Forwarded-* headers of the reverse proxy in front of the application.
+    /// </summary>
+    /// <remarks>
+    /// Required on every platform that terminates TLS at the edge and forwards plain HTTP
+    /// (Fly, Render, Railway, App Service, nginx). Without it the application believes the
+    /// request arrived over HTTP and the HTTPS redirect bounces forever, so the site never
+    /// loads at all. Enable it only when a proxy really is in front: the headers are
+    /// accepted from any peer, so a directly reachable application would let callers forge
+    /// their own scheme and address.
+    /// </remarks>
+    public bool BehindReverseProxy { get; set; }
+
+    /// <summary>
+    /// Directory the data protection keys are written to.
+    /// </summary>
+    /// <remarks>
+    /// A container without this regenerates its keys on every start, which invalidates
+    /// every sign-in cookie and antiforgery token: users are signed out and login forms
+    /// break on each deploy. Point it at persistent storage.
+    /// </remarks>
+    public string? DataProtectionKeyPath { get; set; }
 }
 
 public class OutboundOptions

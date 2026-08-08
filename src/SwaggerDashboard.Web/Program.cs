@@ -2,6 +2,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Server.Circuits;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -75,12 +77,49 @@ builder.Services.AddRateLimiter(options =>
 // Uploaded files are buffered in memory before being forwarded, so the ceiling is modest.
 builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = 32 * 1024 * 1024);
 
+var hosting = builder.Configuration
+    .GetSection(SwaggerDashboardOptions.SectionName)
+    .Get<SwaggerDashboardOptions>()?.Hosting ?? new HostingOptions();
+
+if (hosting.BehindReverseProxy)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders =
+            ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+
+        // Managed platforms route through addresses that are neither stable nor known in
+        // advance, so the default loopback-only trust list would discard the headers and
+        // leave the application thinking every request arrived over plain HTTP.
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
+
+if (!string.IsNullOrWhiteSpace(hosting.DataProtectionKeyPath))
+{
+    var keyDirectory = Directory.CreateDirectory(hosting.DataProtectionKeyPath);
+
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(keyDirectory)
+        .SetApplicationName("SwaggerDashboard");
+}
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/error", createScopeForErrors: true);
     app.UseHsts();
+}
+
+// Must run before anything reads the scheme or the caller's address: the HTTPS redirect,
+// the secure cookie policy and the client IP written to the audit log all depend on it.
+if (hosting.BehindReverseProxy)
+{
+    app.UseForwardedHeaders();
+    app.Logger.LogInformation(
+        "Trusting X-Forwarded-* headers. The application must not be reachable except through its proxy.");
 }
 
 app.Use(async (context, next) =>
