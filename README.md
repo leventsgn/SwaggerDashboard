@@ -171,6 +171,27 @@ gibi yorumlanır) ve uygulamanın kendi yollarıyla (`admin`, `login`, `api`, `h
 `_blazor`, …) çakışamaz. Catch-all route tüm siteyi kapsadığı için bu kontrol olmadan bir
 takma ad yönetim panelini erişilemez hâle getirebilirdi.
 
+### Örnek verilerle doldurma
+
+Form alanları dokümandaki `default` ve `example` değerleriyle açılır; bunun ötesinde hiçbir
+alan kendiliğinden doldurulmaz. Endpoint ekranındaki **Örnek verilerle doldur** butonu, boş
+alanları şemadaki tip ve format bilgisine göre üretilmiş değerlerle doldurur:
+
+- `uuid` gerçek bir GUID, `date-time` geçerli bir zaman damgası, `email` ve `uri` ise
+  ayrılmış dokümantasyon alanlarını (`example.com`, `192.0.2.0/24`) kullanır — üretilen bir
+  değer yanlışlıkla dışarı çıkarsa kimsenin sistemine gitmez.
+- `enum` varsa ilk seçenek, sayısal alanlarda `minimum`/`maximum`, metinlerde
+  `minLength`/`maxLength` uygulanır.
+- `pattern` tanımlıysa üretilen değer desene karşı doğrulanır; uymuyorsa basit denemeler
+  yapılır (posta kodu, sayısal kimlik gibi sabit uzunluklu desenler böyle karşılanır).
+  Hiçbiri uymazsa alan boş bırakılır — geçersiz bir değerle doldurmak, boşluğu görünür
+  bırakmaktan kötüdür.
+- Girilmiş değerlerin üzerine yazılmaz, `readOnly` alanlar atlanır (yanıta aittirler),
+  dosya alanları yükleme kontrolüne bırakılır.
+
+Doldurma yalnızca bu butona basıldığında çalışır. Otomatik olsaydı kullanıcı ne gönderdiğini
+ayırt edemezdi.
+
 ### Swagger yenileme
 
 `/admin/apis` ekranında:

@@ -106,6 +106,57 @@ public class FormNode
         }
     }
 
+    /// <summary>
+    /// Fills empty fields with generated sample values.
+    /// </summary>
+    /// <remarks>
+    /// Only ever called from an explicit user action. Values the user already entered are
+    /// never overwritten, read-only properties are skipped because they belong to responses
+    /// rather than requests, and a field whose value cannot be generated honestly is left
+    /// empty so the gap stays visible.
+    /// </remarks>
+    public void FillWithSamples()
+    {
+        if (IsObject)
+        {
+            foreach (var child in Children)
+            {
+                child.FillWithSamples();
+            }
+
+            return;
+        }
+
+        if (IsArray)
+        {
+            if (Items.Count == 0)
+            {
+                AddItem();
+            }
+
+            foreach (var item in Items)
+            {
+                item.FillWithSamples();
+            }
+
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(Value) || EffectiveSchema.ReadOnly)
+        {
+            return;
+        }
+
+        var sample = SampleValueGenerator.Generate(EffectiveSchema, Name);
+        if (sample is null)
+        {
+            return;
+        }
+
+        Value = sample;
+        Included = true;
+    }
+
     public void AddItem()
     {
         var itemSchema = EffectiveSchema.Items ?? new FieldSchema();

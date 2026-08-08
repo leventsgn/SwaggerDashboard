@@ -191,7 +191,20 @@
             <button type="button" class="btn btn-primary" disabled>Çalıştır</button>
             <span class="text-secondary small">Endpoint çalıştırma yetkiniz yok.</span>
         }
+
+        @if (HasFillableFields)
+        {
+            <button type="button" class="btn btn-outline-secondary" @onclick="FillWithSamples"
+                    title="Boş alanları dokümandaki tip ve format bilgisine göre örnek değerlerle doldurur. Girdiğiniz değerlere dokunmaz.">
+                Örnek verilerle doldur
+            </button>
+        }
     </div>
+
+    @if (_sampleNote is not null)
+    {
+        <p class="sd-field-help">@_sampleNote</p>
+    }
 </div>
 
 @code {
@@ -225,6 +238,7 @@
     private string _rawBody = string.Empty;
     private string? _rawParseError;
     private string? _validationError;
+    private string? _sampleNote;
     private bool _rawMode;
     private bool _executing;
     private bool _shareCopied;
@@ -238,6 +252,43 @@
 
     private bool IsFileUpload =>
         _contentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>There is nothing to fill when the operation takes no input at all.</summary>
+    private bool HasFillableFields => _parameterNodes.Count > 0 || (_bodyNode is not null && !IsFileUpload);
+
+    /// <summary>
+    /// Fills the empty fields of the whole request with generated sample values.
+    /// </summary>
+    /// <remarks>
+    /// When the raw view is open the tree is reloaded from the typed JSON first, so text the
+    /// user wrote there survives and the fill only adds what is still missing.
+    /// </remarks>
+    private void FillWithSamples()
+    {
+        _sampleNote = null;
+
+        if (_rawMode)
+        {
+            SwitchToForm();
+
+            if (_rawParseError is not null)
+            {
+                _sampleNote = "Raw JSON geçerli olmadığı için doldurma yapılamadı; önce JSON'u düzeltin.";
+                return;
+            }
+        }
+
+        foreach (var node in _parameterNodes.Values)
+        {
+            node.FillWithSamples();
+        }
+
+        _bodyNode?.FillWithSamples();
+        OnFormChanged();
+
+        _sampleNote = "Boş alanlar örnek değerlerle dolduruldu. Desen kısıtı olan ve üretilen değerin "
+                      + "uymadığı alanlar boş bırakıldı; göndermeden önce kontrol edin.";
+    }
 
     protected override void OnInitialized()
     {
