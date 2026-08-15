@@ -95,6 +95,26 @@ Dizi sırası korunur, çünkü OpenAPI'de dizi sırası anlamlıdır.
 `DashboardJson` render kaynağıdır; `ApiEndpoints` arama, güncelleme farkı (diff) ve
 raporlama kaynağıdır. İkisi aynı transaction içinde güncellenir.
 
+### Arayüz ve tasarım token'ları
+
+Tüm ölçüler ve renkler `wwwroot/app.css` başındaki token'lardan gelir: 4 piksellik boşluk
+skalası (`--sd-1`…`--sd-6`), yazı skalası (`--sd-text-xs`…`--sd-text-2xl`), yüzeyler
+(`--sd-surface-0/1/2`), kenarlıklar, vurgu rengi ve HTTP metot renkleri. Bir konsolda aynı
+birkaç şekil (etiket, değer, rozet, satır) binlerce kez tekrarlanır; tek tek seçilen değerler
+zamanla birbirinden ayrışır ve hiçbir şey hizalanmaz.
+
+- **Renkler yalnızca token üzerinden.** Açık tema `:root`, koyu tema
+  `[data-bs-theme="dark"]` bloğunda tanımlıdır. Başka bir yere yazılan sabit renk,
+  yazıldığı temada doğru, diğerinde yanlış görünür.
+- **Bootstrap aynı paleti kullanır.** `--bs-body-bg`, `--bs-border-color`, `--bs-code-color`
+  gibi değişkenler token'lara bağlanır; böylece panel, uyarı, buton ve form kontrolleri elle
+  yazılan bileşenlerle aynı zeminde durur.
+- **Metot renkleri tek takımdır.** Beyaz metinle her iki temada da 4.5:1 kontrastı geçecek
+  kadar koyu seçildiler, bu yüzden rozetin temaya göre değişmesi gerekmez. Renk ikincil
+  ipucudur: metot adı her zaman yazıyla da durur.
+- Klavye kullanıcısı için tek bir `:focus-visible` çerçevesi elle çizilen kontrollerde de
+  (endpoint listesi satırları gibi) geçerlidir.
+
 ## Kurulum
 
 ### Gereksinimler

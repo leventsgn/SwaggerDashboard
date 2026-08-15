@@ -51,14 +51,16 @@
                     <h3>@definition.Name</h3>
                     <p class="sd-card-desc">@definition.Description</p>
                     <div class="sd-card-meta">
-                        <span class="badge text-bg-secondary">@definition.EndpointCount endpoint</span>
+                        <span class="badge">@definition.EndpointCount endpoint</span>
                         @if (!string.IsNullOrWhiteSpace(definition.ApiVersion))
                         {
-                            <span class="badge text-bg-light">v@definition.ApiVersion</span>
+                            @* Parenthesised so Razor reads this as an expression: "v@name"
+                               without them is treated as an email address and printed raw. *@
+                            <span class="badge">v@(definition.ApiVersion)</span>
                         }
                         @if (definition.IsAutoProvisioned)
                         {
-                            <span class="badge text-bg-info" title="İlk ziyarette otomatik oluşturuldu">otomatik</span>
+                            <span class="badge" title="İlk ziyarette otomatik oluşturuldu">otomatik</span>
                         }
                     </div>
                     <code class="sd-card-url">@definition.SwaggerUrlNormalized</code>

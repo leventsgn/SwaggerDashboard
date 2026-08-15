@@ -77,8 +77,9 @@
             {
                 <div class="sd-array-item">
                     <SchemaField Node="item" Depth="Depth + 1" OnChanged="OnChanged" />
-                    <button type="button" class="btn btn-sm btn-outline-danger"
-                            @onclick="() => RemoveItem(item)" title="Sil">×</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary sd-icon-btn"
+                            @onclick="() => RemoveItem(item)" title="Sil"
+                            aria-label="Diziden bu öğeyi sil">×</button>
                 </div>
             }
             <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="AddItem">

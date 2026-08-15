@@ -4,8 +4,11 @@
     <div class="sd-left-head">
         <h1 class="sd-api-name" title="@Definition.SwaggerUrlNormalized">@Definition.Name</h1>
         <div class="sd-api-meta">
-            <span class="badge text-bg-secondary">@Definition.ApiVersion</span>
-            <span class="badge text-bg-light">@Dashboard.Operations.Count endpoint</span>
+            @if (!string.IsNullOrWhiteSpace(Definition.ApiVersion))
+            {
+                <span class="badge">@Definition.ApiVersion</span>
+            }
+            <span class="badge">@Dashboard.Operations.Count endpoint</span>
         </div>
     </div>
 

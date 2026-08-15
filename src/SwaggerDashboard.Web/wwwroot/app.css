@@ -1,9 +1,129 @@
+/* ============================================================================
+   Swagger Dashboard — design tokens
+
+   Every size, colour and radius below comes from one of these scales. The point
+   is not tidiness for its own sake: a console like this shows the same handful
+   of shapes (a label, a value, a badge, a row) thousands of times, and values
+   picked one at a time drift apart until nothing lines up.
+
+   Colours are declared twice, once per theme, and only through tokens. A hard
+   coded colour anywhere else would look correct in whichever theme it was
+   written in and wrong in the other.
+   ============================================================================ */
+
 :root {
-    --sd-gap: 0.75rem;
-    --sd-radius: 6px;
-    --sd-left-width: 20rem;
+    /* spacing — 4px grid */
+    --sd-1: 0.25rem;
+    --sd-2: 0.5rem;
+    --sd-3: 0.75rem;
+    --sd-4: 1rem;
+    --sd-5: 1.5rem;
+    --sd-6: 2rem;
+
+    /* type */
+    --sd-text-xs: 0.7rem;
+    --sd-text-sm: 0.78rem;
+    --sd-text-md: 0.85rem;
+    --sd-text-base: 0.95rem;
+    --sd-text-lg: 1.1rem;
+    --sd-text-xl: 1.35rem;
+    --sd-text-2xl: 1.7rem;
+
+    --sd-radius-sm: 5px;
+    --sd-radius: 8px;
+    --sd-radius-lg: 12px;
+
+    --sd-left-width: 21rem;
     --sd-right-width: 30rem;
+
+    /* Content is capped so a line of prose or a form field stays readable on a
+       wide screen; the panels themselves still use the full width. */
+    --sd-measure: 62rem;
+
+    /* surfaces */
+    --sd-surface-0: #ffffff;
+    --sd-surface-1: #f6f7f9;
+    --sd-surface-2: #eceff3;
+    --sd-surface-sunken: #f2f4f7;
+    --sd-border: #e2e6ec;
+    --sd-border-strong: #c9d0da;
+    --sd-text: #191c22;
+    --sd-text-muted: #5d6675;
+    --sd-accent: #2563eb;
+    --sd-accent-soft: #e8f0fe;
+
+    --sd-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+    --sd-shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 4px 12px rgba(16, 24, 40, 0.05);
+
+    /* HTTP methods — one set for both themes. These are dark enough that white
+       text clears 4.5:1 on either background, so the badge never restyles. */
+    --m-get: #1a5fb4;
+    --m-post: #196c3a;
+    --m-put: #96590a;
+    --m-patch: #6b21a8;
+    --m-delete: #b02a1f;
+    --m-head: #445164;
+    --m-options: #0f6f7a;
+    --m-other: #55606e;
+
+    /* response status */
+    --s-ok: #196c3a;
+    --s-redirect: #96590a;
+    --s-client: #b02a1f;
+    --s-server: #6b21a8;
+    --s-error: #445164;
+
+    /* JSON syntax */
+    --sd-json-string: #0a7d3f;
+    --sd-json-number: #1a5fb4;
+    --sd-json-bool: #6b21a8;
+
+    --sd-star: #d99400;
+
+    /* Bootstrap agrees with the tokens, so panels, alerts, buttons and form
+       controls sit on the same palette as everything hand written here. */
+    --bs-body-bg: var(--sd-surface-0);
+    --bs-body-color: var(--sd-text);
+    --bs-border-color: var(--sd-border);
+    --bs-secondary-bg: var(--sd-surface-2);
+    --bs-tertiary-bg: var(--sd-surface-1);
+    --bs-secondary-color: var(--sd-text-muted);
+    --bs-border-radius: var(--sd-radius-sm);
+    --bs-link-color: var(--sd-accent);
+    --bs-link-hover-color: var(--sd-accent);
+
+    /* Bootstrap's default pink for inline code shouts on a page where half the
+       text is a URL or a field name. */
+    --bs-code-color: var(--sd-text);
+    --bs-font-monospace: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+        "Liberation Mono", monospace;
+    --bs-body-font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+        Arial, "Noto Sans", sans-serif;
 }
+
+[data-bs-theme="dark"] {
+    --sd-surface-0: #15171c;
+    --sd-surface-1: #1b1e25;
+    --sd-surface-2: #242832;
+    --sd-surface-sunken: #101216;
+    --sd-border: #2b3038;
+    --sd-border-strong: #3b414d;
+    --sd-text: #e5e8ed;
+    --sd-text-muted: #98a1af;
+    --sd-accent: #6ea8ff;
+    --sd-accent-soft: #1d2b44;
+
+    --sd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --sd-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 6px 16px rgba(0, 0, 0, 0.35);
+
+    --sd-json-string: #7ee2a8;
+    --sd-json-number: #8fbcff;
+    --sd-json-bool: #d3a4ff;
+
+    --sd-star: #f0b429;
+}
+
+/* ---------- base ---------- */
 
 html, body {
     height: 100%;
@@ -12,6 +132,70 @@ html, body {
 
 body {
     margin: 0;
+    background: var(--sd-surface-0);
+    color: var(--sd-text);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* One visible focus style for every control, including the ones drawn by hand.
+   Keyboard users otherwise lose their place entirely in the endpoint list. */
+:focus-visible {
+    outline: 2px solid var(--sd-accent);
+    outline-offset: 1px;
+    border-radius: var(--sd-radius-sm);
+}
+
+code, pre, .sd-code {
+    font-family: var(--bs-font-monospace);
+}
+
+/* Scrollbars in three scrolling panels are a large part of what the eye reads as
+   "chrome", so they are toned down to match the surface they sit on. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sd-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: var(--sd-border-strong);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+    }
+}
+
+/* Bootstrap's secondary grey is fixed and turns nearly invisible on the dark
+   surface, so the neutral buttons are re-pointed at the theme's own tokens. */
+.btn-outline-secondary {
+    --bs-btn-color: var(--sd-text);
+    --bs-btn-border-color: var(--sd-border-strong);
+    --bs-btn-hover-color: var(--sd-text);
+    --bs-btn-hover-bg: var(--sd-surface-2);
+    --bs-btn-hover-border-color: var(--sd-border-strong);
+    --bs-btn-active-color: var(--sd-text);
+    --bs-btn-active-bg: var(--sd-surface-2);
+    --bs-btn-active-border-color: var(--sd-border-strong);
+    --bs-btn-disabled-color: var(--sd-text-muted);
+    --bs-btn-disabled-border-color: var(--sd-border);
+}
+
+/* A square button holding a single glyph; the default padding makes one look
+   like a wide button with a typo in it. */
+.sd-icon-btn {
+    width: 1.9rem;
+    padding-left: 0;
+    padding-right: 0;
+    line-height: 1;
 }
 
 /* ---------- shell ---------- */
@@ -25,57 +209,76 @@ body {
 .sd-topbar {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.5rem 1rem;
-    border-bottom: 1px solid var(--bs-border-color);
-    background: var(--bs-tertiary-bg);
+    gap: var(--sd-5);
+    padding: 0 var(--sd-4);
+    height: 3rem;
+    border-bottom: 1px solid var(--sd-border);
+    background: var(--sd-surface-1);
     flex: 0 0 auto;
 }
 
 .sd-brand {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--sd-2);
     font-weight: 600;
+    font-size: var(--sd-text-base);
+    letter-spacing: -0.01em;
     text-decoration: none;
-    color: var(--bs-body-color);
+    color: var(--sd-text);
 }
 
 .sd-brand-mark {
     display: inline-grid;
     place-items: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: var(--sd-radius);
-    background: var(--bs-primary);
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: var(--sd-radius-sm);
+    background: var(--sd-accent);
     color: #fff;
-    font-size: 0.8rem;
+    font-size: var(--sd-text-xs);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+[data-bs-theme="dark"] .sd-brand-mark {
+    color: var(--sd-surface-0);
 }
 
 .sd-topnav {
     display: flex;
-    gap: 1rem;
+    gap: var(--sd-1);
 }
 
 .sd-topnav a {
+    padding: var(--sd-1) var(--sd-2);
+    border-radius: var(--sd-radius-sm);
+    font-size: var(--sd-text-md);
     text-decoration: none;
-    color: var(--bs-secondary-color);
+    color: var(--sd-text-muted);
 }
 
 .sd-topnav a:hover {
-    color: var(--bs-body-color);
+    color: var(--sd-text);
+    background: var(--sd-surface-2);
+}
+
+.sd-topnav a.active {
+    color: var(--sd-text);
+    background: var(--sd-surface-2);
+    font-weight: 600;
 }
 
 .sd-topbar-right {
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--sd-2);
 }
 
 .sd-user {
-    font-size: 0.85rem;
-    color: var(--bs-secondary-color);
+    font-size: var(--sd-text-md);
+    color: var(--sd-text-muted);
 }
 
 .sd-main {
@@ -93,8 +296,8 @@ body {
     min-height: 0;
 }
 
-/* The bulk run has no single response to show, so the response panel is dropped and its
-   width goes to the results table, which needs it more. */
+/* The bulk run has no single response to show, so the response panel is dropped
+   and its width goes to the results table, which needs it more. */
 .sd-workbench-wide {
     grid-template-columns: var(--sd-left-width) minmax(0, 1fr);
 }
@@ -104,234 +307,362 @@ body {
 .sd-right {
     min-width: 0;
     overflow: auto;
-    padding: var(--sd-gap);
 }
 
 .sd-left {
-    border-right: 1px solid var(--bs-border-color);
-    background: var(--bs-tertiary-bg);
+    padding: var(--sd-3);
+    border-right: 1px solid var(--sd-border);
+    background: var(--sd-surface-1);
+}
+
+.sd-center {
+    padding: var(--sd-4) var(--sd-5);
 }
 
 .sd-right {
-    border-left: 1px solid var(--bs-border-color);
-    background: var(--bs-tertiary-bg);
-    padding: 0;
+    border-left: 1px solid var(--sd-border);
+    background: var(--sd-surface-1);
+}
+
+/* ---------- left panel ---------- */
+
+.sd-left-head {
+    margin-bottom: var(--sd-3);
 }
 
 .sd-api-name {
-    font-size: 1.05rem;
-    margin: 0 0 0.25rem;
+    font-size: var(--sd-text-base);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 var(--sd-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .sd-api-meta {
     display: flex;
-    gap: 0.25rem;
-    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+    gap: var(--sd-1);
+    font-size: var(--sd-text-xs);
+    color: var(--sd-text-muted);
+}
+
+.sd-api-meta .badge {
+    font-weight: 500;
+    font-size: var(--sd-text-xs);
+    background: var(--sd-surface-2) !important;
+    color: var(--sd-text-muted) !important;
 }
 
 .sd-search {
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--sd-2);
 }
 
 .sd-filters {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
-    margin-bottom: 0.5rem;
+    gap: var(--sd-1);
+    margin-bottom: var(--sd-2);
 }
 
 .sd-check {
-    font-size: 0.8rem;
-    color: var(--bs-secondary-color);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: var(--sd-text-xs);
+    color: var(--sd-text-muted);
+    cursor: pointer;
 }
 
 /* ---------- endpoint list ---------- */
 
 .sd-endpoints details {
-    margin-bottom: 0.25rem;
+    margin-bottom: var(--sd-1);
 }
 
 .sd-endpoints summary {
+    display: flex;
+    align-items: center;
+    gap: var(--sd-1);
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.85rem;
-    padding: 0.2rem 0;
+    font-size: var(--sd-text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sd-text-muted);
+    padding: var(--sd-1) var(--sd-1);
+    border-radius: var(--sd-radius-sm);
+}
+
+.sd-endpoints summary:hover {
+    color: var(--sd-text);
+    background: var(--sd-surface-2);
 }
 
 .sd-count {
-    color: var(--bs-secondary-color);
-    font-weight: 400;
-    font-size: 0.75rem;
+    color: var(--sd-text-muted);
+    font-weight: 500;
+    letter-spacing: 0;
 }
 
 .sd-endpoints ul {
     list-style: none;
-    margin: 0;
-    padding: 0 0 0 0.25rem;
+    margin: 0 0 var(--sd-2);
+    padding: 0;
 }
 
 .sd-endpoint {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--sd-2);
     width: 100%;
     text-align: left;
     background: none;
     border: 0;
-    border-radius: var(--sd-radius);
-    padding: 0.2rem 0.35rem;
-    font-size: 0.8rem;
-    color: var(--bs-body-color);
+    border-radius: var(--sd-radius-sm);
+    padding: 0.28rem var(--sd-2) 0.28rem var(--sd-1);
+    font-size: var(--sd-text-md);
+    color: var(--sd-text);
 }
 
 .sd-endpoint:hover {
-    background: var(--bs-secondary-bg);
+    background: var(--sd-surface-2);
 }
 
 .sd-endpoint.selected {
-    background: var(--bs-primary-bg-subtle);
+    background: var(--sd-accent-soft);
+    font-weight: 500;
+}
+
+/* The selected row is marked on its edge as well as by fill: the fill alone is a
+   single light tint that disappears against the panel in bright rooms. */
+.sd-endpoint.selected::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 15%;
+    bottom: 15%;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--sd-accent);
 }
 
 .sd-path {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-family: var(--bs-font-monospace);
+    font-size: var(--sd-text-sm);
 }
 
 .sd-deprecated {
     margin-left: auto;
+    color: var(--sd-text-muted);
+}
+
+.sd-fav {
+    margin-left: auto;
+    color: var(--sd-star);
+}
+
+.sd-fav-toggle {
+    text-decoration: none;
 }
 
 /* HTTP methods always carry their text label; colour is a secondary cue only. */
 .sd-method,
 .sd-method-chip {
     display: inline-block;
-    min-width: 3.6rem;
+    flex: 0 0 auto;
+    min-width: 3.5rem;
     text-align: center;
-    padding: 0.05rem 0.3rem;
-    border-radius: 3px;
-    font-size: 0.68rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+    font-family: var(--bs-font-monospace);
+    font-size: var(--sd-text-xs);
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
     color: #fff;
-    border: 0;
+    border: 1px solid transparent;
 }
 
+/* An inactive filter is drawn as an outline rather than a faded solid: a
+   half transparent colour block reads as "disabled", not "off". */
 .sd-method-chip {
-    opacity: 0.45;
+    background: transparent !important;
     cursor: pointer;
 }
 
 .sd-method-chip.active {
-    opacity: 1;
+    color: #fff;
 }
 
-.m-get { background: #1565c0; }
-.m-post { background: #2e7d32; }
-.m-put { background: #ef6c00; }
-.m-patch { background: #6a1b9a; }
-.m-delete { background: #c62828; }
-.m-head { background: #455a64; }
-.m-options { background: #00838f; }
-.m-other { background: #616161; }
+.m-get { background: var(--m-get); border-color: var(--m-get); }
+.m-post { background: var(--m-post); border-color: var(--m-post); }
+.m-put { background: var(--m-put); border-color: var(--m-put); }
+.m-patch { background: var(--m-patch); border-color: var(--m-patch); }
+.m-delete { background: var(--m-delete); border-color: var(--m-delete); }
+.m-head { background: var(--m-head); border-color: var(--m-head); }
+.m-options { background: var(--m-options); border-color: var(--m-options); }
+.m-other { background: var(--m-other); border-color: var(--m-other); }
+
+.sd-method-chip.m-get { color: var(--m-get); }
+.sd-method-chip.m-post { color: var(--m-post); }
+.sd-method-chip.m-put { color: var(--m-put); }
+.sd-method-chip.m-patch { color: var(--m-patch); }
+.sd-method-chip.m-delete { color: var(--m-delete); }
+.sd-method-chip.m-head { color: var(--m-head); }
+.sd-method-chip.m-options { color: var(--m-options); }
+.sd-method-chip.m-other { color: var(--m-other); }
+
+[data-bs-theme="dark"] .sd-method-chip {
+    filter: brightness(1.45);
+}
+
+.sd-method-chip.active.m-get { background: var(--m-get) !important; }
+.sd-method-chip.active.m-post { background: var(--m-post) !important; }
+.sd-method-chip.active.m-put { background: var(--m-put) !important; }
+.sd-method-chip.active.m-patch { background: var(--m-patch) !important; }
+.sd-method-chip.active.m-delete { background: var(--m-delete) !important; }
+.sd-method-chip.active.m-head { background: var(--m-head) !important; }
+.sd-method-chip.active.m-options { background: var(--m-options) !important; }
+.sd-method-chip.active.m-other { background: var(--m-other) !important; }
+
+[data-bs-theme="dark"] .sd-method-chip.active {
+    filter: none;
+    color: #fff;
+}
 
 /* ---------- detail ---------- */
 
+.sd-detail,
+.sd-sweep,
+.sd-empty {
+    max-width: var(--sd-measure);
+}
+
 .sd-detail-head {
-    border-bottom: 1px solid var(--bs-border-color);
-    padding-bottom: 0.5rem;
-    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--sd-border);
+    padding-bottom: var(--sd-3);
+    margin-bottom: var(--sd-4);
 }
 
 .sd-detail-title {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--sd-2);
+}
+
+.sd-detail-title .sd-method {
+    min-width: 4rem;
+    padding: 0.15rem 0.4rem;
+    font-size: var(--sd-text-sm);
 }
 
 .sd-detail-path {
-    font-size: 1rem;
+    font-family: var(--bs-font-monospace);
+    font-size: var(--sd-text-lg);
+    font-weight: 600;
     word-break: break-all;
+    color: var(--sd-text);
 }
 
 .sd-summary {
-    margin: 0.5rem 0 0.25rem;
+    margin: var(--sd-2) 0 var(--sd-1);
+    font-size: var(--sd-text-base);
     font-weight: 500;
 }
 
 .sd-description {
-    color: var(--bs-secondary-color);
-    font-size: 0.9rem;
+    color: var(--sd-text-muted);
+    font-size: var(--sd-text-md);
     white-space: pre-wrap;
+    margin-bottom: var(--sd-2);
 }
 
 .sd-detail-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
-    font-size: 0.8rem;
-    color: var(--bs-secondary-color);
+    align-items: center;
+    gap: var(--sd-3);
+    font-size: var(--sd-text-sm);
+    color: var(--sd-text-muted);
+}
+
+.sd-detail-meta code {
+    color: var(--sd-text);
 }
 
 .sd-section {
-    margin-bottom: 1rem;
+    margin-bottom: var(--sd-5);
 }
 
 .sd-section h4 {
-    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: var(--sd-1);
+    font-size: var(--sd-text-xs);
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--bs-secondary-color);
-    border-bottom: 1px solid var(--bs-border-color);
-    padding-bottom: 0.2rem;
-    margin-bottom: 0.5rem;
+    letter-spacing: 0.07em;
+    color: var(--sd-text-muted);
+    padding-bottom: var(--sd-1);
+    margin-bottom: var(--sd-3);
+    border-bottom: 1px solid var(--sd-border);
 }
 
 .sd-field {
-    margin-bottom: 0.6rem;
+    margin-bottom: var(--sd-3);
 }
 
+/* Nesting is shown with a guide line rather than indentation alone; at three
+   levels deep, plain indentation stops telling you which parent you are under. */
 .sd-field-nested {
-    border-left: 2px solid var(--bs-border-color);
-    padding-left: 0.6rem;
-    margin-left: 0.1rem;
+    border-left: 1px solid var(--sd-border);
+    padding-left: var(--sd-3);
+    margin-left: var(--sd-1);
 }
 
 .sd-field-head {
     display: flex;
     align-items: baseline;
-    gap: 0.5rem;
+    gap: var(--sd-2);
+    margin-bottom: 0.2rem;
 }
 
 .sd-field-label {
-    font-size: 0.85rem;
+    font-size: var(--sd-text-md);
     font-weight: 500;
     margin: 0;
 }
 
 .sd-field-type {
     margin-left: auto;
-    font-size: 0.72rem;
-    color: var(--bs-secondary-color);
+    font-size: var(--sd-text-xs);
+    color: var(--sd-text-muted);
     font-family: var(--bs-font-monospace);
+    white-space: nowrap;
 }
 
 .sd-field-help,
 .sd-field-constraints {
-    font-size: 0.75rem;
-    color: var(--bs-secondary-color);
-    margin: 0.15rem 0;
+    font-size: var(--sd-text-xs);
+    color: var(--sd-text-muted);
+    margin: 0.2rem 0 0;
 }
 
 .sd-required {
-    color: var(--bs-danger);
+    color: var(--m-delete);
     margin-left: 0.15rem;
 }
 
 .sd-array-item {
     display: flex;
     align-items: flex-start;
-    gap: 0.35rem;
+    gap: var(--sd-2);
+    margin-bottom: var(--sd-1);
 }
 
 .sd-array-item > :first-child {
@@ -340,43 +671,66 @@ body {
 
 .sd-json {
     font-family: var(--bs-font-monospace);
-    font-size: 0.8rem;
+    font-size: var(--sd-text-sm);
+    line-height: 1.55;
+}
+
+.sd-body-tabs,
+.sd-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem;
 }
 
 .sd-body-tabs {
-    display: flex;
-    gap: 0.25rem;
-    margin-bottom: 0.4rem;
+    margin-bottom: var(--sd-2);
+    padding: 0.15rem;
+    background: var(--sd-surface-2);
+    border-radius: var(--sd-radius-sm);
+    align-self: flex-start;
+    width: fit-content;
 }
 
-.sd-body-tabs button,
-.sd-tabs button {
+/* The body view switch is a segmented control: two mutually exclusive views of
+   the same data, which underlined tabs would understate. */
+.sd-body-tabs button {
     background: none;
-    border: 1px solid transparent;
-    border-bottom: 2px solid transparent;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.8rem;
-    color: var(--bs-secondary-color);
+    border: 0;
+    border-radius: 4px;
+    padding: 0.2rem var(--sd-3);
+    font-size: var(--sd-text-sm);
+    color: var(--sd-text-muted);
 }
 
-.sd-body-tabs button.active,
-.sd-tabs button.active {
-    color: var(--bs-body-color);
-    border-bottom-color: var(--bs-primary);
+.sd-body-tabs button:hover {
+    color: var(--sd-text);
+}
+
+.sd-body-tabs button.active {
+    background: var(--sd-surface-0);
+    color: var(--sd-text);
     font-weight: 600;
+    box-shadow: var(--sd-shadow-sm);
 }
 
 .sd-content-type {
     font-family: var(--bs-font-monospace);
-    font-size: 0.78rem;
-    color: var(--bs-secondary-color);
-    margin-bottom: 0.4rem;
+    font-size: var(--sd-text-xs);
+    color: var(--sd-text-muted);
+    margin-bottom: var(--sd-2);
+}
+
+.sd-upload {
+    padding: var(--sd-3);
+    border: 1px dashed var(--sd-border-strong);
+    border-radius: var(--sd-radius);
+    background: var(--sd-surface-1);
 }
 
 .sd-auth {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.35rem;
+    gap: var(--sd-2);
 }
 
 .sd-auth > * {
@@ -386,8 +740,9 @@ body {
 .sd-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin: 1rem 0;
+    flex-wrap: wrap;
+    gap: var(--sd-2);
+    margin: var(--sd-5) 0 var(--sd-3);
 }
 
 /* ---------- response ---------- */
@@ -395,80 +750,110 @@ body {
 .sd-response-head {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--bs-border-color);
+    gap: var(--sd-3);
+    padding: var(--sd-3);
+    border-bottom: 1px solid var(--sd-border);
 }
 
 .sd-status {
+    font-family: var(--bs-font-monospace);
     font-weight: 700;
-    padding: 0.1rem 0.4rem;
-    border-radius: 3px;
+    font-size: var(--sd-text-sm);
+    letter-spacing: 0.02em;
+    padding: 0.15rem var(--sd-2);
+    border-radius: var(--sd-radius-sm);
     color: #fff;
 }
 
-.s-ok { background: #2e7d32; }
-.s-redirect { background: #ef6c00; }
-.s-client { background: #c62828; }
-.s-server { background: #6a1b9a; }
-.s-error { background: #455a64; }
+.s-ok { background: var(--s-ok); }
+.s-redirect { background: var(--s-redirect); }
+.s-client { background: var(--s-client); }
+.s-server { background: var(--s-server); }
+.s-error { background: var(--s-error); }
 
 .sd-timing,
 .sd-size {
-    font-size: 0.8rem;
-    color: var(--bs-secondary-color);
+    font-size: var(--sd-text-sm);
+    color: var(--sd-text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 .sd-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    padding: 0 0.5rem;
-    border-bottom: 1px solid var(--bs-border-color);
+    padding: 0 var(--sd-3);
+    border-bottom: 1px solid var(--sd-border);
+    gap: var(--sd-1);
+}
+
+.sd-tabs button {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: var(--sd-2) var(--sd-1);
+    font-size: var(--sd-text-sm);
+    color: var(--sd-text-muted);
+}
+
+.sd-tabs button:hover {
+    color: var(--sd-text);
+}
+
+.sd-tabs button.active {
+    color: var(--sd-text);
+    border-bottom-color: var(--sd-accent);
+    font-weight: 600;
 }
 
 .sd-tab-body {
-    padding: 0.25rem;
+    padding: var(--sd-3);
 }
 
 .sd-response-empty {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    height: 8rem;
-    color: var(--bs-secondary-color);
+    gap: var(--sd-2);
+    height: 10rem;
+    font-size: var(--sd-text-md);
+    color: var(--sd-text-muted);
 }
 
 .sd-pre {
     font-family: var(--bs-font-monospace);
-    font-size: 0.78rem;
+    font-size: var(--sd-text-sm);
+    line-height: 1.55;
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 60vh;
     overflow: auto;
-    padding: 0.5rem;
+    padding: var(--sd-3);
     margin: 0;
-    background: var(--bs-body-bg);
+    background: var(--sd-surface-sunken);
+    border: 1px solid var(--sd-border);
     border-radius: var(--sd-radius);
+    color: var(--sd-text);
 }
 
 .response-sandbox {
     width: 100%;
     height: 24rem;
-    border: 1px solid var(--bs-border-color);
+    border: 1px solid var(--sd-border);
     border-radius: var(--sd-radius);
     background: #fff;
+}
+
+.sd-kv {
+    margin-bottom: 0;
 }
 
 .sd-kv th {
     width: 12rem;
     font-weight: 500;
-    color: var(--bs-secondary-color);
-    font-size: 0.8rem;
+    color: var(--sd-text-muted);
+    font-size: var(--sd-text-sm);
 }
 
 .sd-kv td {
-    font-size: 0.8rem;
+    font-size: var(--sd-text-sm);
 }
 
 .sd-break {
@@ -479,215 +864,72 @@ body {
 
 .sd-tree {
     font-family: var(--bs-font-monospace);
-    font-size: 0.78rem;
-    padding: 0.4rem;
+    font-size: var(--sd-text-sm);
+    line-height: 1.6;
 }
 
 .sd-tree-children {
-    padding-left: 1rem;
-    border-left: 1px dotted var(--bs-border-color);
+    padding-left: var(--sd-4);
+    border-left: 1px solid var(--sd-border);
 }
 
 .sd-tree-key {
-    color: var(--bs-primary);
+    color: var(--sd-accent);
 }
 
 .sd-tree-meta,
 .sd-tree-more {
-    color: var(--bs-secondary-color);
-    font-size: 0.72rem;
+    color: var(--sd-text-muted);
+    font-size: var(--sd-text-xs);
 }
 
 .sd-tree-leaf {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--sd-2);
 }
 
-.v-string { color: #2e7d32; }
-.v-number { color: #1565c0; }
-.v-bool { color: #6a1b9a; }
-.v-null { color: var(--bs-secondary-color); }
-
-/* ---------- pages ---------- */
-
-.sd-page {
-    max-width: 78rem;
-    margin: 0 auto;
-    padding: 1.25rem;
-}
-
-.sd-narrow {
-    max-width: 24rem;
-    margin: 3rem auto;
-}
-
-.sd-page-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.sd-panel {
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--sd-radius);
-    padding: 1rem;
-    margin-bottom: 1rem;
-}
-
-.sd-form-grid {
-    display: grid;
-    grid-template-columns: 10rem minmax(0, 1fr);
-    gap: 0.5rem 0.75rem;
-    align-items: center;
-}
-
-.sd-form-grid label {
-    font-size: 0.85rem;
-    color: var(--bs-secondary-color);
-}
-
-.sd-quick-open {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.sd-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-    gap: 0.75rem;
-}
-
-.sd-card {
-    display: block;
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--sd-radius);
-    padding: 0.75rem;
-    text-decoration: none;
-    color: var(--bs-body-color);
-}
-
-.sd-card:hover {
-    border-color: var(--bs-primary);
-}
-
-.sd-card h3 {
-    font-size: 1rem;
-    margin: 0 0 0.25rem;
-}
-
-.sd-card-desc {
-    font-size: 0.82rem;
-    color: var(--bs-secondary-color);
-    margin: 0 0 0.5rem;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.sd-card-meta {
-    display: flex;
-    gap: 0.25rem;
-    margin-bottom: 0.4rem;
-}
-
-.sd-card-url {
-    font-size: 0.7rem;
-    color: var(--bs-secondary-color);
-    word-break: break-all;
-}
-
-.sd-center-message {
-    max-width: 34rem;
-    margin: 4rem auto;
-    text-align: center;
-}
-
-.sd-center-message h1,
-.sd-center-message h2 {
-    font-size: 1.4rem;
-    margin: 1rem 0 0.5rem;
-}
-
-.sd-empty {
-    padding: 1.5rem;
-}
-
-.sd-provisioned {
-    margin: 0.5rem;
-}
-
-.sd-table td,
-.sd-table th {
-    font-size: 0.82rem;
-    vertical-align: middle;
-}
-
-.sd-row-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-}
-
-.sd-log-detail {
-    padding: 0.5rem;
-}
-
-.sd-log-detail h5 {
-    font-size: 0.8rem;
-    color: var(--bs-secondary-color);
-    margin-top: 0.5rem;
-}
-
-.sd-warnings {
-    margin-top: 1rem;
-    font-size: 0.82rem;
-}
+.v-string { color: var(--sd-json-string); }
+.v-number { color: var(--sd-json-number); }
+.v-bool { color: var(--sd-json-bool); }
+.v-null { color: var(--sd-text-muted); }
 
 /* ---------- bulk run ---------- */
 
-.sd-sweep {
-    padding: 1rem;
-
-    /* Long path column, short everything else: past this width the status a reader is
-       scanning for drifts too far from the path it belongs to. */
-    max-width: 76rem;
-}
-
 .sd-sweep-head h3 {
-    font-size: 1.1rem;
-    margin-bottom: 0.25rem;
+    font-size: var(--sd-text-lg);
+    font-weight: 600;
+    margin-bottom: var(--sd-1);
 }
 
 .sd-sweep-head p {
-    font-size: 0.85rem;
-    max-width: 46rem;
+    font-size: var(--sd-text-md);
 }
 
 .sd-sweep-options {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    margin-bottom: 0.75rem;
-    font-size: 0.85rem;
+    gap: var(--sd-4);
+    margin-bottom: var(--sd-3);
+}
+
+.sd-sweep-options .sd-check {
+    font-size: var(--sd-text-md);
+    color: var(--sd-text);
 }
 
 .sd-sweep-summary {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    margin: 1rem 0 0.5rem;
+    gap: var(--sd-2);
+    margin: var(--sd-4) 0 var(--sd-2);
 }
 
 .sd-sweep-count {
-    font-size: 0.8rem;
+    font-size: var(--sd-text-sm);
     font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--sd-radius);
+    padding: 0.15rem var(--sd-2);
+    border-radius: var(--sd-radius-sm);
 }
 
 .sd-sweep-success {
@@ -701,51 +943,365 @@ body {
 }
 
 .sd-sweep-skipped {
-    background: var(--bs-secondary-bg);
-    color: var(--bs-secondary-color);
-}
-
-.sd-sweep-table {
-    table-layout: auto;
+    background: var(--sd-surface-2);
+    color: var(--sd-text-muted);
 }
 
 .sd-sweep-row {
     cursor: pointer;
 }
 
-/* The status colour is carried by a left edge rather than a full row tint: at thirty rows a
-   tinted table is harder to read than the codes it is meant to highlight. */
+/* The status colour is carried by a left edge rather than a full row tint: at
+   thirty rows a tinted table is harder to read than the codes it highlights. */
 .sd-sweep-row td:first-child {
     border-left: 3px solid transparent;
 }
 
-.sd-sweep-ok td:first-child {
-    border-left-color: var(--bs-success);
+.sd-sweep-ok td:first-child { border-left-color: var(--s-ok); }
+.sd-sweep-bad td:first-child { border-left-color: var(--s-client); }
+.sd-sweep-skip td:first-child { border-left-color: var(--sd-border-strong); }
+
+.sd-sweep-row:hover td {
+    background: var(--sd-surface-2);
 }
 
-.sd-sweep-bad td:first-child {
-    border-left-color: var(--bs-danger);
+.sd-sweep-table td {
+    font-variant-numeric: tabular-nums;
 }
 
-.sd-sweep-skip td:first-child {
-    border-left-color: var(--bs-secondary-color);
+/* ---------- pages ---------- */
+
+.sd-page {
+    max-width: 76rem;
+    margin: 0 auto;
+    padding: var(--sd-5) var(--sd-4) var(--sd-6);
 }
 
-.sd-sweep-row:hover {
-    background: var(--bs-tertiary-bg);
+/* Prose and forms read best at 76rem, but a table of eleven columns does not
+   fit in a measure meant for sentences. */
+.sd-page-wide {
+    max-width: 100rem;
+}
+
+.sd-page > p.text-secondary {
+    max-width: var(--sd-measure);
+    font-size: var(--sd-text-md);
+}
+
+.sd-page h1 {
+    font-size: var(--sd-text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+
+.sd-page h3 {
+    font-size: var(--sd-text-lg);
+    font-weight: 600;
+    margin: 0 0 var(--sd-3);
+}
+
+.sd-narrow {
+    max-width: 23rem;
+    margin: 5rem auto;
+}
+
+.sd-login-title {
+    font-size: var(--sd-text-xl);
+    font-weight: 600;
+    margin: 0;
+}
+
+.sd-login-help {
+    font-size: var(--sd-text-md);
+    color: var(--sd-text-muted);
+    margin: var(--sd-1) 0 var(--sd-4);
+}
+
+.sd-form .form-label {
+    font-size: var(--sd-text-md);
+    color: var(--sd-text-muted);
+    margin-bottom: 0.2rem;
+}
+
+.sd-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sd-4);
+    margin-bottom: var(--sd-4);
+}
+
+.sd-panel {
+    border: 1px solid var(--sd-border);
+    border-radius: var(--sd-radius);
+    background: var(--sd-surface-0);
+    box-shadow: var(--sd-shadow-sm);
+    padding: var(--sd-4);
+    margin-bottom: var(--sd-4);
+}
+
+.sd-form-grid {
+    display: grid;
+    grid-template-columns: 10rem minmax(0, 1fr);
+    gap: var(--sd-3);
+    align-items: center;
+    max-width: var(--sd-measure);
+}
+
+.sd-form-grid label {
+    font-size: var(--sd-text-md);
+    color: var(--sd-text-muted);
+}
+
+.sd-quick-open {
+    display: flex;
+    gap: var(--sd-2);
+    margin-bottom: var(--sd-4);
+    max-width: var(--sd-measure);
+}
+
+/* ---------- tables ---------- */
+
+/* A table fills its panel edge to edge; the padding belongs to the cells, which
+   already carry it, and doubling it wastes a column's worth of width. */
+.sd-panel-table {
+    padding: 0;
+    overflow-x: auto;
+}
+
+.sd-panel-table > .sd-table > :not(caption) > * > * {
+    padding-left: var(--sd-3);
+    padding-right: var(--sd-3);
+}
+
+.sd-panel-table > .sd-table > tbody > tr:last-child > * {
+    border-bottom-width: 0;
+}
+
+.sd-table {
+    --bs-table-bg: transparent;
+    margin-bottom: 0;
+}
+
+.sd-table > thead th {
+    font-size: var(--sd-text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sd-text-muted);
+    border-bottom: 1px solid var(--sd-border);
+    white-space: nowrap;
+}
+
+.sd-table td,
+.sd-table th {
+    font-size: var(--sd-text-md);
+    vertical-align: middle;
+    border-color: var(--sd-border);
+}
+
+/* Four buttons plus seven metadata columns do not fit one line on a normal
+   screen, so the column is given a fixed width and the buttons wrap inside it
+   in a tidy right aligned block. Forcing them onto one line instead only moved
+   the problem: the table then overflowed its panel and clipped the buttons at
+   the edge, which is worse than a second row. */
+td.sd-row-actions {
+    width: 21rem;
+    text-align: right;
+}
+
+td.sd-row-actions > * {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0.1rem 0 0.1rem var(--sd-1);
+}
+
+td.sd-row-actions .btn {
+    white-space: nowrap;
+}
+
+/* Selector matches the cell rule above it, which is otherwise more specific and
+   would put the block back to inline-block. */
+td.sd-row-actions > .sd-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sd-1);
+    margin: 0;
+}
+
+.sd-actions-grid > * {
+    margin: 0;
+    width: 100%;
+}
+
+/* A URL has no break opportunities, so a cell holding one refuses to shrink and
+   squeezes every other column — including the buttons — out of the table. These
+   two cap it and hand the full value to the title attribute instead. */
+.sd-cell-code {
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sd-cell-code code {
+    font-size: var(--sd-text-sm);
+}
+
+/* Secondary line under a table cell's main value: one line, ellipsised, full
+   value on hover. Wrapped URLs made every row a different height. */
+.sd-cell-sub {
+    max-width: 24rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--sd-text-xs);
+    color: var(--sd-text-muted);
+}
+
+.sd-table .badge {
+    font-weight: 500;
+    font-size: var(--sd-text-xs);
+}
+
+.sd-log-detail {
+    padding: var(--sd-2) 0;
+}
+
+.sd-log-detail h5 {
+    font-size: var(--sd-text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sd-text-muted);
+    margin-top: var(--sd-3);
+}
+
+/* ---------- cards ---------- */
+
+.sd-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+    gap: var(--sd-3);
+}
+
+.sd-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sd-2);
+    border: 1px solid var(--sd-border);
+    border-radius: var(--sd-radius);
+    background: var(--sd-surface-0);
+    box-shadow: var(--sd-shadow-sm);
+    padding: var(--sd-4);
+    text-decoration: none;
+    color: var(--sd-text);
+    transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+.sd-card:hover {
+    border-color: var(--sd-border-strong);
+    box-shadow: var(--sd-shadow);
+    transform: translateY(-1px);
+    color: var(--sd-text);
+}
+
+.sd-card h3 {
+    font-size: var(--sd-text-base);
+    font-weight: 600;
+    margin: 0;
+}
+
+.sd-card-desc {
+    font-size: var(--sd-text-md);
+    color: var(--sd-text-muted);
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.sd-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sd-1);
+    margin: 0;
+}
+
+.sd-card-meta .badge {
+    font-weight: 500;
+    font-size: var(--sd-text-xs);
+    background: var(--sd-surface-2) !important;
+    color: var(--sd-text-muted) !important;
+}
+
+.sd-card-url {
+    font-size: var(--sd-text-xs);
+    color: var(--sd-text-muted);
+    word-break: break-all;
+    margin-top: auto;
+}
+
+/* ---------- empty and message states ---------- */
+
+.sd-center-message {
+    max-width: 34rem;
+    margin: 5rem auto;
+    text-align: center;
+}
+
+.sd-center-message h1,
+.sd-center-message h2 {
+    font-size: var(--sd-text-xl);
+    font-weight: 600;
+    margin: var(--sd-4) 0 var(--sd-2);
+}
+
+.sd-empty {
+    padding: var(--sd-5) 0;
+}
+
+.sd-empty h3 {
+    font-size: var(--sd-text-xl);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.sd-provisioned {
+    margin: var(--sd-2);
+    font-size: var(--sd-text-md);
+}
+
+.sd-warnings {
+    margin-top: var(--sd-4);
+    font-size: var(--sd-text-sm);
+    color: var(--sd-text-muted);
 }
 
 /* ---------- responsive: panels become stacked sections ---------- */
 
+@media (max-width: 1400px) {
+    :root {
+        --sd-right-width: 26rem;
+    }
+}
+
 @media (max-width: 1200px) {
     :root {
-        --sd-left-width: 16rem;
+        --sd-left-width: 17rem;
         --sd-right-width: 22rem;
+    }
+
+    .sd-center {
+        padding: var(--sd-4) var(--sd-3);
     }
 }
 
 @media (max-width: 900px) {
-    .sd-workbench {
+    .sd-workbench,
+    .sd-workbench-wide {
         grid-template-columns: 1fr;
         height: auto;
     }
@@ -753,20 +1309,21 @@ body {
     .sd-left,
     .sd-right {
         border: 0;
-        border-bottom: 1px solid var(--bs-border-color);
+        border-bottom: 1px solid var(--sd-border);
         max-height: 22rem;
     }
 
     .sd-form-grid {
         grid-template-columns: 1fr;
+        gap: var(--sd-1);
     }
-}
 
-.sd-fav {
-    margin-left: auto;
-    color: #e0a800;
-}
+    .sd-topbar {
+        gap: var(--sd-3);
+        padding: 0 var(--sd-2);
+    }
 
-.sd-fav-toggle {
-    text-decoration: none;
+    .sd-brand-text {
+        display: none;
+    }
 }

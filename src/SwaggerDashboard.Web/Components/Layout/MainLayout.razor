@@ -7,12 +7,16 @@
             <span class="sd-brand-text">Swagger Dashboard</span>
         </a>
 
+    @* NavLink rather than a plain anchor so the current section is marked; with
+       four destinations and no page chrome there was nothing else saying where
+       you were. Match=All on /apis keeps it from lighting up on every dashboard
+       route, which the catch-all would otherwise make it do. *@
         <nav class="sd-topnav">
-            <a href="/apis">API'ler</a>
+            <NavLink href="/apis" Match="NavLinkMatch.All">API'ler</NavLink>
             <AuthorizeView Roles="@Roles.Admin">
-                <a href="/admin/apis">Yönetim</a>
-                <a href="/admin/logs">Loglar</a>
-                <a href="/admin/users">Kullanıcılar</a>
+                <NavLink href="/admin/apis">Yönetim</NavLink>
+                <NavLink href="/admin/logs">Loglar</NavLink>
+                <NavLink href="/admin/users">Kullanıcılar</NavLink>
             </AuthorizeView>
         </nav>
 

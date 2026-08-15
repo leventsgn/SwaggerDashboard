@@ -5,8 +5,9 @@
 
 <PageTitle>Giriş - Swagger Dashboard</PageTitle>
 
-<div class="sd-narrow">
-    <h1>Giriş</h1>
+<div class="sd-narrow sd-panel">
+    <h1 class="sd-login-title">Giriş</h1>
+    <p class="sd-login-help">Devam etmek için hesabınızla oturum açın.</p>
 
     @if (Error is not null)
     {
@@ -24,7 +25,7 @@
         <input class="form-control" id="password" name="password" type="password"
                autocomplete="current-password" required />
 
-        <button class="btn btn-primary mt-3" type="submit">Giriş yap</button>
+        <button class="btn btn-primary mt-3 w-100" type="submit">Giriş yap</button>
     </form>
 </div>
 

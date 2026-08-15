@@ -8,7 +8,7 @@
 
 <PageTitle>API yönetimi - Swagger Dashboard</PageTitle>
 
-<div class="sd-page">
+<div class="sd-page sd-page-wide">
     <div class="sd-page-head">
         <h1>API yönetimi</h1>
         <button class="btn btn-primary" @onclick="() => _showNew = !_showNew">
@@ -62,6 +62,7 @@
     }
     else
     {
+        <div class="sd-panel sd-panel-table">
         <table class="table table-sm sd-table">
             <thead>
             <tr>
@@ -80,9 +81,11 @@
                 <tr>
                     <td>
                         <a href="/@ApiDefinitionService.BuildRoute(definition)">@definition.Name</a>
-                        <div class="small text-secondary sd-break">@definition.SwaggerUrlNormalized</div>
+                        <div class="sd-cell-sub" title="@definition.SwaggerUrlNormalized">@definition.SwaggerUrlNormalized</div>
                     </td>
-                    <td><code>@ApiDefinitionService.BuildRoute(definition)</code></td>
+                    <td class="sd-cell-code" title="@ApiDefinitionService.BuildRoute(definition)">
+                        <code>@ApiDefinitionService.BuildRoute(definition)</code>
+                    </td>
                     <td>@definition.EndpointCount</td>
                     <td><code title="@definition.SwaggerHash">@Short(definition.SwaggerHash)</code></td>
                     <td>@definition.LastSwaggerCheckAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
@@ -97,20 +100,25 @@
                         }
                     </td>
                     <td class="sd-row-actions">
-                        <button class="btn btn-sm btn-outline-primary" disabled="@_busy"
-                                @onclick="() => RefreshAsync(definition.Id)">Swagger Güncelle</button>
-                        <button class="btn btn-sm btn-outline-secondary" disabled="@_busy"
-                                @onclick="() => RebuildAsync(definition.Id)">Yeniden Oluştur</button>
-                        <button class="btn btn-sm btn-outline-secondary" disabled="@_busy"
-                                @onclick="() => ToggleActiveAsync(definition)">
-                            @(definition.IsActive ? "Pasifleştir" : "Aktifleştir")
-                        </button>
-                        <a class="btn btn-sm btn-outline-secondary" href="/admin/apis/@definition.Id">Düzenle</a>
+                        @* Four actions per row do not fit one line next to seven columns, so
+                           they are laid out as an even block rather than left to wrap ragged. *@
+                        <div class="sd-actions-grid">
+                            <button class="btn btn-sm btn-outline-primary" disabled="@_busy"
+                                    @onclick="() => RefreshAsync(definition.Id)">Swagger Güncelle</button>
+                            <button class="btn btn-sm btn-outline-secondary" disabled="@_busy"
+                                    @onclick="() => RebuildAsync(definition.Id)">Yeniden Oluştur</button>
+                            <button class="btn btn-sm btn-outline-secondary" disabled="@_busy"
+                                    @onclick="() => ToggleActiveAsync(definition)">
+                                @(definition.IsActive ? "Pasifleştir" : "Aktifleştir")
+                            </button>
+                            <a class="btn btn-sm btn-outline-secondary" href="/admin/apis/@definition.Id">Düzenle</a>
+                        </div>
                     </td>
                 </tr>
             }
             </tbody>
         </table>
+        </div>
     }
 
     @if (_diff is not null && _diff.HasChanges)
