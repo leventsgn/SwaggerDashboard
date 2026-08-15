@@ -106,6 +106,34 @@ public class RequestLogService : IRequestLogService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ApiRequestLog>> GetForEndpointAsync(
+        int apiDefinitionId,
+        string endpointSlug,
+        string userId,
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        var endpointId = await _db.ApiEndpoints
+            .AsNoTracking()
+            .Where(e => e.ApiDefinitionId == apiDefinitionId && e.Slug == endpointSlug)
+            .Select(e => (int?)e.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (endpointId is null)
+        {
+            return [];
+        }
+
+        return await _db.ApiRequestLogs
+            .AsNoTracking()
+            .Where(l => l.ApiEndpointId == endpointId &&
+                        l.UserId == userId &&
+                        !l.IsBulkRun)
+            .OrderByDescending(l => l.Id)
+            .Take(Math.Clamp(take, 1, 50))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<int> PurgeExpiredAsync(CancellationToken cancellationToken = default)
     {
         var retentionDays = _options.CurrentValue.Logging.RetentionDays;

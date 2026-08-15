@@ -4,6 +4,7 @@
 @using SwaggerDashboard.Infrastructure.Services
 @inject IApiProxyService ProxyService
 @inject ISavedRequestService SavedRequestService
+@inject IRequestLogService LogService
 @inject IApiCredentialStore CredentialStore
 @inject CurrentUserAccessor CurrentUserAccessor
 @inject NavigationManager Navigation
@@ -271,6 +272,43 @@
                 değiştirir. Kimlik doğrulama bilgileri <strong>kaydedilmez</strong>.
             </p>
         </section>
+
+        <section class="sd-section sd-history">
+            <h4>Son çağrılar</h4>
+
+            @if (_history.Count == 0)
+            {
+                <p class="sd-field-help">
+                    Bu endpointi henüz çağırmadınız. Çağrılar burada listelenir ve birine
+                    tıklayarak o isteği forma geri yükleyebilirsiniz.
+                </p>
+            }
+            else
+            {
+                <ul class="sd-history-list">
+                    @foreach (var entry in _history)
+                    {
+                        <li>
+                            <button type="button" class="sd-history-item" disabled="@_savedBusy"
+                                    @onclick="() => ReplayAsync(entry)"
+                                    title="Bu isteği forma yükle">
+                                <span class="sd-status @ResponsePanel.StatusClass(entry.ResponseStatusCode)">
+                                    @(entry.ResponseStatusCode == 0 ? "—" : entry.ResponseStatusCode.ToString())
+                                </span>
+                                <span class="sd-history-time">@entry.CreatedAt.ToLocalTime().ToString("dd.MM HH:mm")</span>
+                                <span class="sd-history-url sd-break">@ShortUrl(entry.RequestUrl)</span>
+                                <span class="sd-history-duration">@entry.DurationMilliseconds ms</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+
+                <p class="sd-field-help">
+                    Yükleme, adresteki path ve query değerleriyle gövdeyi geri getirir. Başlıklar
+                    ve kimlik bilgileri getirilmez: loga maskelenerek yazılırlar.
+                </p>
+            }
+        </section>
     }
 </div>
 
@@ -321,6 +359,12 @@
     private string _saveName = string.Empty;
     private string? _savedError;
     private bool _savedBusy;
+
+    /// <summary>How many past calls the history list shows. Long enough to find the one you
+    /// mean, short enough to stay a list rather than a log viewer.</summary>
+    private const int HistoryCount = 8;
+
+    private IReadOnlyList<ApiRequestLog> _history = [];
 
     private ApiAuthKind _authKind = ApiAuthKind.None;
     private string _authSecret = string.Empty;
@@ -382,10 +426,62 @@
 
     private async Task LoadSavedListAsync()
     {
-        _saved = UserId is null
-            ? []
-            : await SavedRequestService.ListAsync(Definition.Id, Operation.Slug, UserId);
+        if (UserId is null)
+        {
+            _saved = [];
+            _history = [];
+            return;
+        }
+
+        _saved = await SavedRequestService.ListAsync(Definition.Id, Operation.Slug, UserId);
+        _history = await LogService.GetForEndpointAsync(
+            Definition.Id, Operation.Slug, UserId, HistoryCount);
     }
+
+    /// <summary>
+    /// Loads a past call back into the form.
+    /// </summary>
+    /// <remarks>
+    /// Goes through the same payload type as a saved request, so both restore paths behave
+    /// identically. A log row whose URL no longer matches the operation's path — the document
+    /// changed since the call — is reported rather than partially applied.
+    /// </remarks>
+    private async Task ReplayAsync(ApiRequestLog entry)
+    {
+        _savedBusy = true;
+        _savedError = null;
+
+        try
+        {
+            var payload = RequestReplay.FromLoggedRequest(Operation, entry.RequestUrl, entry.RequestBody);
+
+            if (payload is null)
+            {
+                _savedError = "Bu çağrı forma yüklenemedi: adres bu endpointin yoluna uymuyor, " +
+                              "swagger dokümanı çağrıdan sonra değişmiş olabilir.";
+                return;
+            }
+
+            BuildForm(fill: false);
+            SelectContentType(payload.ContentType);
+            RequestComposer.ApplyPayload(payload, _parameterNodes, _bodyNode);
+            OnFormChanged();
+
+            _sampleNote = entry.RequestBodyTruncated
+                ? "Çağrı yüklendi. Gövde loga kırpılarak yazıldığı için eksik olabilir; göndermeden önce kontrol edin."
+                : $"{entry.CreatedAt.ToLocalTime():dd.MM HH:mm} çağrısı forma yüklendi.";
+        }
+        finally
+        {
+            _savedBusy = false;
+        }
+    }
+
+    /// <summary>Drops the scheme and host so the list shows the part that varies.</summary>
+    private static string ShortUrl(string requestUrl) =>
+        Uri.TryCreate(requestUrl, UriKind.Absolute, out var uri)
+            ? uri.PathAndQuery
+            : requestUrl;
 
     /// <summary>Stores the form as it currently stands under the typed name.</summary>
     private async Task SaveCurrentAsync()

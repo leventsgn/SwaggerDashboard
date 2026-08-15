@@ -163,7 +163,11 @@ public partial class ResponsePanel : IDisposable
         return value;
     }
 
-    private static string StatusClass(int statusCode) => statusCode switch
+    /// <summary>
+    /// Shared with the endpoint screen's history list so a status reads the same colour
+    /// wherever it appears.
+    /// </summary>
+    internal static string StatusClass(int statusCode) => statusCode switch
     {
         0 => "s-error",
         >= 200 and < 300 => "s-ok",

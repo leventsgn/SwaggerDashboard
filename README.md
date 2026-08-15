@@ -251,6 +251,19 @@ filtrelenir, bu filtre ekranda değil serviste uygulanır.
 - Yükleme formu önce boşaltır: kayıtta olmayan alanlarda kalan örnek değerler isteğe eklenmiş
   olurdu ve kayıt, kaydedildiği isteği üretmezdi.
 
+### İstek geçmişi
+
+Endpoint ekranındaki **Son çağrılar**, o endpointe kendi yaptığınız son çağrıları durum kodu,
+saat ve süreyle listeler. Bir satıra tıklamak o isteği forma geri yükler.
+
+Log yeni bir alan kazanmadı: geri yükleme, loglanmış adresi okuyup değerleri çıkarır. Log,
+giden çağrının denetim kaydıdır; form durumunu oraya kopyalamak, birbiriyle çelişebilen ikinci
+bir gerçek üretirdi. Yol şablonu adresin **sonundan** eşleştirilir, çünkü adresin başı ortamın
+taban yoludur ve ortamdan ortama değişir. Eşleşmeyen bir adres kısmen doldurulmaz, reddedilir.
+
+Getirilenler path ve query değerleri ile gövdedir. Başlıklar ve kimlik bilgileri getirilmez —
+loga maskelenerek yazılırlar. Toplu test çağrıları bu listede yer almaz (bkz. `IsBulkRun`).
+
 ### Favoriler ve son kullanılanlar
 
 Endpoint ekranındaki yıldız butonu endpointi kullanıcıya özel favorilere ekler; sol menüde

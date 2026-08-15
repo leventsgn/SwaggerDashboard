@@ -783,6 +783,54 @@ code, pre, .sd-code {
     max-width: 30rem;
 }
 
+/* ---------- call history ---------- */
+
+.sd-history-list {
+    list-style: none;
+    margin: 0 0 var(--sd-2);
+    padding: 0;
+}
+
+/* One row per call, columns aligned so the eye can run down the status and the
+   time without reading the URLs. */
+.sd-history-item {
+    display: grid;
+    grid-template-columns: 3.2rem 4.5rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--sd-2);
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: var(--sd-radius-sm);
+    padding: var(--sd-1) var(--sd-2);
+    color: var(--sd-text);
+}
+
+.sd-history-item:hover {
+    background: var(--sd-surface-2);
+}
+
+.sd-history-item .sd-status {
+    justify-self: start;
+    font-size: var(--sd-text-xs);
+}
+
+.sd-history-time,
+.sd-history-duration {
+    font-size: var(--sd-text-xs);
+    color: var(--sd-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.sd-history-url {
+    font-family: var(--bs-font-monospace);
+    font-size: var(--sd-text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* ---------- response ---------- */
 
 .sd-response-head {
