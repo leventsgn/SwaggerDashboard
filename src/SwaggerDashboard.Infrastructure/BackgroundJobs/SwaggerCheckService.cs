@@ -115,9 +115,14 @@ public class SwaggerCheckService : BackgroundService
                 else if (result.Changed)
                 {
                     changed++;
+
+                    // A changed result always carries a diff, but the type allows it to be
+                    // absent (a failure has none), so the log does not depend on that.
+                    var diff = result.Diff ?? new EndpointDiff();
+
                     _logger.LogInformation(
                         "API {ApiDefinitionId} swagger changed: +{Added} -{Removed} ~{Modified}",
-                        id, result.Diff.Added.Count, result.Diff.Removed.Count, result.Diff.Modified.Count);
+                        id, diff.Added.Count, diff.Removed.Count, diff.Modified.Count);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

@@ -312,7 +312,7 @@
                     {
                         <li>
                             <button type="button" class="sd-history-item" disabled="@_savedBusy"
-                                    @onclick="() => ReplayAsync(entry)"
+                                    @onclick="() => Replay(entry)"
                                     title="Bu isteği forma yükle">
                                 <span class="sd-status @ResponsePanel.StatusClass(entry.ResponseStatusCode)">
                                     @(entry.ResponseStatusCode == 0 ? "—" : entry.ResponseStatusCode.ToString())
@@ -470,7 +470,7 @@
     /// identically. A log row whose URL no longer matches the operation's path — the document
     /// changed since the call — is reported rather than partially applied.
     /// </remarks>
-    private async Task ReplayAsync(ApiRequestLog entry)
+    private void Replay(ApiRequestLog entry)
     {
         _savedBusy = true;
         _savedError = null;
