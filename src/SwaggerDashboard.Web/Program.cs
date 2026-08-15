@@ -65,6 +65,22 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
+    // A bare 429 is a blank page to whoever is typing: the browser posted a form and got a
+    // status with no body back, so the sign in screen appears to have silently failed. The
+    // login form is sent back instead, with a message saying to wait.
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        if (context.HttpContext.Request.Path.StartsWithSegments("/account/login"))
+        {
+            context.HttpContext.Response.Redirect("/login?error=rate");
+            return;
+        }
+
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsync(
+            "İstek sınırı aşıldı, biraz sonra tekrar deneyin.", cancellationToken);
+    };
+
     // The login endpoint is the one anonymous write path, so it gets its own bucket.
     options.AddFixedWindowLimiter(RateLimitPolicies.Login, limiter =>
     {
@@ -144,9 +160,15 @@ app.UseRouting();
 
 app.UseMiddleware<ClientInfoMiddleware>();
 app.UseRateLimiter();
-app.UseAntiforgery();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// After authentication, not before it. An antiforgery token generated for a signed in user
+// carries that user's name, and validation compares it against the current user — which is
+// still anonymous if this runs first. The effect is that any form rendered while signed in
+// fails to post with "the provided antiforgery token was meant for a different claims-based
+// user", which is how signing in as a second user produced an exception page.
+app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

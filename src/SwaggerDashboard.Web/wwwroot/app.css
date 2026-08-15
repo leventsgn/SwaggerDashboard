@@ -745,6 +745,44 @@ code, pre, .sd-code {
     margin: var(--sd-5) 0 var(--sd-3);
 }
 
+/* ---------- saved requests ---------- */
+
+.sd-saved-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sd-2);
+    margin: 0 0 var(--sd-3);
+    padding: 0;
+}
+
+/* Name and delete read as one object, so they are joined into a single pill
+   rather than left as two buttons that happen to sit next to each other. */
+.sd-saved-item {
+    display: flex;
+}
+
+.sd-saved-item .sd-saved-load {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sd-saved-item .sd-icon-btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    margin-left: -1px;
+}
+
+.sd-saved-form {
+    display: flex;
+    gap: var(--sd-2);
+    max-width: 30rem;
+}
+
 /* ---------- response ---------- */
 
 .sd-response-head {

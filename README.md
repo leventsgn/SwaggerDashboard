@@ -234,6 +234,23 @@ liste Test ve Production için ayrı ayrı alınabilir.
   ortamının çöküşünü toplu testin kendi sonucu hâline getirir. Sonuçlar geldikçe tabloya
   eklenir ve **Durdur** ile yarıda kesilebilir; o ana kadar alınan satırlar kalır.
 
+### Kaydedilmiş istekler
+
+Endpoint ekranında doldurulan form bir adla kaydedilebilir ve sonra tek tıkla geri yüklenir.
+Kayıtlar kişiseldir: listeleme, yükleme ve silme her zaman oturumdaki kullanıcıya göre
+filtrelenir, bu filtre ekranda değil serviste uygulanır.
+
+- Kaydedilen şey **değerlerdir**, form ağacı değil. Ağaç swagger dokümanından türetilir ve
+  doküman değişir; değer saklamak, alan eklenip çıktığında eski kaydın hâlâ yüklenebilmesi
+  demektir — kalan alanlar dolar, olmayanlar sessizce atlanır.
+- **Kimlik bilgileri kaydedilmez.** Onlar oturum boyunca sunucu belleğinde durur; bir bearer
+  token'ı veritabanı satırına yazmak bu kolaylığı parola deposuna çevirirdi.
+- Aynı ada tekrar kaydetmek öncekini değiştirir, böylece birbirinden ayırt edilemeyen iki
+  satır oluşmaz. Endpoint başına 50 kayıt ve kayıt başına 128 KB sınırı vardır; sınırı aşan
+  gövde sessizce kırpılmaz, reddedilir.
+- Yükleme formu önce boşaltır: kayıtta olmayan alanlarda kalan örnek değerler isteğe eklenmiş
+  olurdu ve kayıt, kaydedildiği isteği üretmezdi.
+
 ### Favoriler ve son kullanılanlar
 
 Endpoint ekranındaki yıldız butonu endpointi kullanıcıya özel favorilere ekler; sol menüde

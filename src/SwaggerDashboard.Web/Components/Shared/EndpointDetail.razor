@@ -3,6 +3,7 @@
 @using SwaggerDashboard.Application.Routing
 @using SwaggerDashboard.Infrastructure.Services
 @inject IApiProxyService ProxyService
+@inject ISavedRequestService SavedRequestService
 @inject IApiCredentialStore CredentialStore
 @inject CurrentUserAccessor CurrentUserAccessor
 @inject NavigationManager Navigation
@@ -218,6 +219,59 @@
     {
         <p class="sd-field-help">@_sampleNote</p>
     }
+
+    @if (UserId is not null)
+    {
+        <section class="sd-section sd-saved">
+            <h4>Kaydedilmiş istekler</h4>
+
+            @if (_savedError is not null)
+            {
+                <div class="alert alert-danger py-2">@_savedError</div>
+            }
+
+            @if (_saved.Count == 0)
+            {
+                <p class="sd-field-help">
+                    Bu endpoint için kaydedilmiş istek yok. Doldurduğunuz formu bir adla
+                    kaydederseniz sonra tek tıkla geri yükleyebilirsiniz.
+                </p>
+            }
+            else
+            {
+                <ul class="sd-saved-list">
+                    @foreach (var saved in _saved)
+                    {
+                        <li class="sd-saved-item">
+                            <button type="button" class="btn btn-sm btn-outline-secondary sd-saved-load"
+                                    disabled="@_savedBusy" @onclick="() => LoadSavedAsync(saved.Id)"
+                                    title="@($"Son güncelleme: {saved.UpdatedAt.ToLocalTime():yyyy-MM-dd HH:mm}")">
+                                @saved.Name
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary sd-icon-btn"
+                                    disabled="@_savedBusy" @onclick="() => DeleteSavedAsync(saved.Id)"
+                                    title="Sil" aria-label="@($"{saved.Name} isteğini sil")">×</button>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="sd-saved-form">
+                <input class="form-control form-control-sm" placeholder="İstek adı (ör. 404 senaryosu)"
+                       maxlength="200" @bind="_saveName" @bind:event="oninput" />
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                        disabled="@(_savedBusy || string.IsNullOrWhiteSpace(_saveName))"
+                        @onclick="SaveCurrentAsync">
+                    Kaydet
+                </button>
+            </div>
+
+            <p class="sd-field-help">
+                Formdaki değerler ve gövde veritabanına yazılır; aynı adla kaydetmek öncekini
+                değiştirir. Kimlik doğrulama bilgileri <strong>kaydedilmez</strong>.
+            </p>
+        </section>
+    }
 </div>
 
 @code {
@@ -262,6 +316,11 @@
     private bool _executing;
     private bool _shareCopied;
     private bool _credentialSaved;
+
+    private IReadOnlyList<SavedRequest> _saved = [];
+    private string _saveName = string.Empty;
+    private string? _savedError;
+    private bool _savedBusy;
 
     private ApiAuthKind _authKind = ApiAuthKind.None;
     private string _authSecret = string.Empty;
@@ -314,10 +373,148 @@
             : null;
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         BuildForm(fill: true);
         LoadStoredCredential();
+        await LoadSavedListAsync();
+    }
+
+    private async Task LoadSavedListAsync()
+    {
+        _saved = UserId is null
+            ? []
+            : await SavedRequestService.ListAsync(Definition.Id, Operation.Slug, UserId);
+    }
+
+    /// <summary>Stores the form as it currently stands under the typed name.</summary>
+    private async Task SaveCurrentAsync()
+    {
+        _savedBusy = true;
+        _savedError = null;
+
+        try
+        {
+            // Captured from the node tree rather than from the raw text box so the two views
+            // cannot disagree about what is being saved.
+            if (_rawMode)
+            {
+                SwitchToForm();
+
+                if (_rawParseError is not null)
+                {
+                    _savedError = "Raw JSON geçerli olmadığı için kaydedilemedi; önce JSON'u düzeltin.";
+                    return;
+                }
+            }
+
+            var payload = RequestComposer.CapturePayload(_parameterNodes, _contentType, BuildBody());
+
+            var result = await SavedRequestService.SaveAsync(
+                Definition.Id, Operation.Slug, UserId!, _saveName, payload.ToJson());
+
+            if (!result.Success)
+            {
+                _savedError = result.Error;
+                return;
+            }
+
+            _saveName = string.Empty;
+            await LoadSavedListAsync();
+        }
+        finally
+        {
+            _savedBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Replaces the form with a stored request.
+    /// </summary>
+    /// <remarks>
+    /// The form is rebuilt empty first: loading has to reproduce what was saved, and sample
+    /// values left in fields the payload does not mention would be sent along with it.
+    /// </remarks>
+    private async Task LoadSavedAsync(int id)
+    {
+        _savedBusy = true;
+        _savedError = null;
+
+        try
+        {
+            var saved = await SavedRequestService.GetAsync(id, UserId!);
+
+            if (saved is null)
+            {
+                _savedError = "Kayıtlı istek bulunamadı; silinmiş olabilir.";
+                await LoadSavedListAsync();
+                return;
+            }
+
+            var payload = SavedRequestPayload.FromJson(saved.PayloadJson);
+
+            if (payload is null)
+            {
+                _savedError = $"'{saved.Name}' okunamadı; kayıt bu sürümle uyumlu değil.";
+                return;
+            }
+
+            BuildForm(fill: false);
+            SelectContentType(payload.ContentType);
+            RequestComposer.ApplyPayload(payload, _parameterNodes, _bodyNode);
+            OnFormChanged();
+
+            if (_bodyNode is null && payload.Body is not null)
+            {
+                _rawBody = payload.Body;
+            }
+
+            _sampleNote = $"'{saved.Name}' yüklendi.";
+        }
+        finally
+        {
+            _savedBusy = false;
+        }
+    }
+
+    private async Task DeleteSavedAsync(int id)
+    {
+        _savedBusy = true;
+        _savedError = null;
+
+        try
+        {
+            await SavedRequestService.DeleteAsync(id, UserId!);
+            await LoadSavedListAsync();
+        }
+        finally
+        {
+            _savedBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Switches to the stored content type when the document still offers it, so a body saved
+    /// as one media type is not loaded into the editor for another.
+    /// </summary>
+    private void SelectContentType(string? contentType)
+    {
+        if (string.IsNullOrEmpty(contentType) || contentType == _contentType)
+        {
+            return;
+        }
+
+        var content = Operation.RequestBody?.Contents
+            .FirstOrDefault(c => c.ContentType == contentType);
+
+        if (content is null)
+        {
+            return;
+        }
+
+        _contentType = content.ContentType;
+        _bodyContent = content;
+        _bodyNode = new FormNode(content.Schema, null, true) { Included = true };
     }
 
     /// <summary>

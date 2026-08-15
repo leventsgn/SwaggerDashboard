@@ -163,6 +163,97 @@ public static class RequestComposer
 
         return SampleRequestResult.Ok(request);
     }
+
+    /// <summary>
+    /// Reads the values a user has entered into a form so they can be stored.
+    /// </summary>
+    /// <remarks>
+    /// An optional parameter that is neither ticked nor filled is left out entirely rather
+    /// than stored as empty, so restoring the request produces the same call it made: an empty
+    /// query parameter is not the same thing as an absent one.
+    /// </remarks>
+    public static SavedRequestPayload CapturePayload(
+        IReadOnlyDictionary<string, FormNode> parameterNodes,
+        string? contentType,
+        string? body)
+    {
+        var parameters = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        foreach (var (key, node) in parameterNodes)
+        {
+            if (node.IsArray)
+            {
+                var values = node.Items
+                    .Where(i => !string.IsNullOrEmpty(i.Value))
+                    .Select(i => i.Value)
+                    .ToList();
+
+                if (values.Count > 0)
+                {
+                    parameters[key] = values;
+                }
+            }
+            else if (node.Included || !string.IsNullOrEmpty(node.Value))
+            {
+                parameters[key] = [node.Value];
+            }
+        }
+
+        return new SavedRequestPayload
+        {
+            Parameters = parameters,
+            ContentType = contentType,
+            Body = body,
+        };
+    }
+
+    /// <summary>
+    /// Puts stored values back into a freshly built form.
+    /// </summary>
+    /// <remarks>
+    /// The nodes are expected to be empty: loading a saved request has to reproduce it
+    /// exactly, and leftover sample values in fields the payload does not mention would be
+    /// sent along with it. Fields the document no longer has are skipped silently, which is
+    /// what keeps an old saved request usable after the API changes.
+    /// </remarks>
+    public static void ApplyPayload(
+        SavedRequestPayload payload,
+        IReadOnlyDictionary<string, FormNode> parameterNodes,
+        FormNode? bodyNode)
+    {
+        foreach (var (key, values) in payload.Parameters)
+        {
+            if (!parameterNodes.TryGetValue(key, out var node))
+            {
+                continue;
+            }
+
+            if (node.IsArray)
+            {
+                node.Items.Clear();
+
+                foreach (var value in values)
+                {
+                    node.AddItem();
+                    node.Items[^1].Value = value;
+                }
+
+                node.Included = true;
+            }
+            else
+            {
+                node.Value = values.Count > 0 ? values[0] : string.Empty;
+                node.Included = true;
+            }
+        }
+
+        var body = payload.BodyAsNode();
+
+        if (bodyNode is not null && body is not null)
+        {
+            bodyNode.LoadFrom(body);
+        }
+    }
 }
 
 public record SampleRequestResult(ProxyRequest? Request, string? Reason)
