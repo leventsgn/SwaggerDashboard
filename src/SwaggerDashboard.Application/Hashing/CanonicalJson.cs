@@ -17,6 +17,28 @@ namespace SwaggerDashboard.Application.Hashing;
 /// </remarks>
 public static class CanonicalJson
 {
+    /// <summary>
+    /// Canonicalizes a JSON document, or reports that the text is not JSON.
+    /// </summary>
+    /// <remarks>
+    /// An OpenAPI document may be YAML. The reader accepts it, so the platform must too:
+    /// letting the parse exception escape from hashing turned a supported document format
+    /// into a dead page.
+    /// </remarks>
+    public static bool TryCanonicalize(string text, out string? canonical)
+    {
+        try
+        {
+            canonical = Canonicalize(text);
+            return true;
+        }
+        catch (JsonException)
+        {
+            canonical = null;
+            return false;
+        }
+    }
+
     public static string Canonicalize(string json)
     {
         using var document = JsonDocument.Parse(json, new JsonDocumentOptions

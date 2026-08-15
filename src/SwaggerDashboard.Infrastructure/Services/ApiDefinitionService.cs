@@ -66,6 +66,28 @@ public class ApiDefinitionService : IApiDefinitionService
         ResolveContext context,
         CancellationToken cancellationToken = default)
     {
+        try
+        {
+            return await ResolveCoreAsync(routeTail, context, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The caller is a Blazor component: an exception escaping here tears down the
+            // circuit and leaves the visitor on a page that never finishes loading, with no
+            // message and no way to retry. A failed resolve has to come back as a result.
+            _logger.LogError(ex, "Resolving {RouteTail} failed unexpectedly", routeTail);
+
+            return ResolveResult.Failure(
+                ResolveStatus.ProvisioningFailed,
+                "Adres çözümlenirken beklenmeyen bir hata oluştu. Ayrıntı uygulama logunda.");
+        }
+    }
+
+    private async Task<ResolveResult> ResolveCoreAsync(
+        string routeTail,
+        ResolveContext context,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(routeTail))
         {
             return ResolveResult.Failure(ResolveStatus.InvalidUrl, "Adres boş.");
@@ -393,6 +415,8 @@ public class ApiDefinitionService : IApiDefinitionService
             CreatedAt = now,
         });
 
+        AddServerEnvironments(definition, dashboard, now);
+
         // Both the document URL and whatever the user actually typed must resolve here.
         AddAlias(definition, targetKey, documentUrl.AbsoluteUri, now);
         if (!string.Equals(requestKey, targetKey, StringComparison.Ordinal))
@@ -686,20 +710,27 @@ public class ApiDefinitionService : IApiDefinitionService
             CreatedAt = now,
         });
 
-    private static bool IsVisibleTo(ApiDefinition definition, ResolveContext context)
+    private static bool IsVisibleTo(ApiDefinition definition, ResolveContext context) =>
+        IsVisibleTo(definition, context.Role);
+
+    /// <summary>
+    /// Whether a role may see and use this API. Public because the proxy has to ask the same
+    /// question at call time, from a role it read out of the database rather than a cookie.
+    /// </summary>
+    public static bool IsVisibleTo(ApiDefinition definition, string? role)
     {
         if (string.IsNullOrWhiteSpace(definition.AllowedRoles))
         {
             return true;
         }
 
-        if (string.Equals(context.Role, Roles.Admin, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(role, Roles.Admin, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
         var allowed = definition.AllowedRoles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return Array.Exists(allowed, r => string.Equals(r, context.Role, StringComparison.OrdinalIgnoreCase));
+        return Array.Exists(allowed, r => string.Equals(r, role, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -708,8 +739,10 @@ public class ApiDefinitionService : IApiDefinitionService
     /// </summary>
     internal static string DeriveBaseUrl(Uri documentUrl, DashboardDocument dashboard)
     {
-        foreach (var server in dashboard.Servers)
+        foreach (var entry in dashboard.Servers)
         {
+            var server = entry.Url;
+
             if (string.IsNullOrWhiteSpace(server) || server.Contains('{'))
             {
                 // Templated server URLs need variable values the dashboard does not have.
@@ -731,6 +764,66 @@ public class ApiDefinitionService : IApiDefinitionService
         }
 
         return documentUrl.GetLeftPart(UriPartial.Authority);
+    }
+
+    /// <summary>
+    /// Turns the document's remaining servers into environments.
+    /// </summary>
+    /// <remarks>
+    /// A document that lists production, test and dev is telling us the environments; making
+    /// the user retype them from a file they already gave us is busywork. The first server is
+    /// already the default environment, so only the others are added, and only when they are
+    /// usable absolute addresses. The document names them through the description; without one
+    /// they are numbered, because an environment nobody can tell apart is worse than none.
+    /// </remarks>
+    private static void AddServerEnvironments(
+        ApiDefinition definition,
+        DashboardDocument dashboard,
+        DateTimeOffset now)
+    {
+        var index = 1;
+
+        foreach (var server in dashboard.Servers)
+        {
+            index++;
+
+            if (string.IsNullOrWhiteSpace(server.Url) || server.Url.Contains('{'))
+            {
+                continue;
+            }
+
+            if (!Uri.TryCreate(server.Url, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                continue;
+            }
+
+            var baseUrl = uri.AbsoluteUri.TrimEnd('/');
+
+            if (definition.Environments.Any(e =>
+                    string.Equals(e.BaseUrl, baseUrl, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var name = string.IsNullOrWhiteSpace(server.Description)
+                ? $"Sunucu {index}"
+                : Truncate(server.Description.Trim(), 64)!;
+
+            if (definition.Environments.Any(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                name = $"{name} ({index})";
+            }
+
+            definition.Environments.Add(new ApiEnvironment
+            {
+                ApiDefinitionId = definition.Id,
+                Name = name,
+                BaseUrl = baseUrl,
+                IsDefault = false,
+                CreatedAt = now,
+            });
+        }
     }
 
     /// <summary>The route the user should bookmark for this API.</summary>

@@ -65,7 +65,11 @@ public class DashboardGeneratorService : IDashboardGeneratorService
         {
             foreach (var server in document.Servers.Where(s => !string.IsNullOrWhiteSpace(s.Url)))
             {
-                dashboard.Servers.Add(server.Url.TrimEnd('/'));
+                dashboard.Servers.Add(new DashboardServer
+                {
+                    Url = ResolveServerUrl(server).TrimEnd('/'),
+                    Description = server.Description,
+                });
             }
         }
 
@@ -99,6 +103,38 @@ public class DashboardGeneratorService : IDashboardGeneratorService
         BuildTags(dashboard, tagDescriptions);
 
         return DashboardGenerationResult.Ok(dashboard);
+    }
+
+    /// <summary>
+    /// Substitutes the declared defaults into a templated server URL.
+    /// </summary>
+    /// <remarks>
+    /// A URL like http://{host}:{port}/{basePath} is fully usable when every variable has a
+    /// default — which is the common case. Leaving it templated made the platform fall back to
+    /// the address the document was served from, so calls quietly went to the wrong host. A
+    /// variable without a default keeps its placeholder: guessing one would be worse than
+    /// leaving the base address to be set by hand.
+    /// </remarks>
+    private static string ResolveServerUrl(OpenApiServer server)
+    {
+        var url = server.Url;
+
+        if (server.Variables is null || server.Variables.Count == 0 || !url.Contains('{'))
+        {
+            return url;
+        }
+
+        foreach (var (name, variable) in server.Variables)
+        {
+            if (string.IsNullOrEmpty(variable?.Default))
+            {
+                continue;
+            }
+
+            url = url.Replace($"{{{name}}}", variable.Default, StringComparison.Ordinal);
+        }
+
+        return url;
     }
 
     private static void AddSecuritySchemes(OpenApiDocument document, DashboardDocument dashboard)

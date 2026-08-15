@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using SwaggerDashboard.Application.Abstractions;
 using SwaggerDashboard.Domain.Entities;
 using SwaggerDashboard.Infrastructure;
+using SwaggerDashboard.Infrastructure.Identity;
 using SwaggerDashboard.Infrastructure.Persistence;
 using Xunit;
 
@@ -62,7 +63,24 @@ public class EndToEndTests : IAsyncLifetime
         _services = services.BuildServiceProvider();
 
         using var scope = _services.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<SwaggerDashboardDbContext>().Database.EnsureCreatedAsync();
+        var db = scope.ServiceProvider.GetRequiredService<SwaggerDashboardDbContext>();
+        await db.Database.EnsureCreatedAsync();
+
+        // The proxy authorises every call against the stored user rather than against the
+        // caller's claims, so the fixture needs a real row behind the Developer context.
+        db.Users.Add(new DashboardUser
+        {
+            Id = 1,
+            UserName = "dev",
+            Role = Roles.Developer,
+            IsActive = true,
+            PasswordHash = "unused",
+            PasswordSalt = "unused",
+            PasswordIterations = 1,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await db.SaveChangesAsync();
     }
 
     public async Task DisposeAsync()
@@ -377,6 +395,133 @@ public class EndToEndTests : IAsyncLifetime
 
         Assert.Equal(ResolveStatus.ProvisioningFailed, result.Status);
         Assert.Equal(0, await db.ApiDefinitions.CountAsync());
+    }
+
+    /// <summary>Adds a user the proxy will authorise against, and returns its id as a string.</summary>
+    private async Task<string> AddUserAsync(string userName, string role, bool isActive = true)
+    {
+        using var scope = Scope();
+        var db = scope.ServiceProvider.GetRequiredService<SwaggerDashboardDbContext>();
+
+        var user = new DashboardUser
+        {
+            UserName = userName,
+            Role = role,
+            IsActive = isActive,
+            PasswordHash = "unused",
+            PasswordSalt = "unused",
+            PasswordIterations = 1,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        return user.Id.ToString();
+    }
+
+    private async Task<ProxyResponse> CallAsync(int apiDefinitionId, string slug, string? userId)
+    {
+        using var scope = Scope();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+
+        return await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = apiDefinitionId,
+            OperationSlug = slug,
+            PathParameters = { ["id"] = "42" },
+            UserId = userId,
+        });
+    }
+
+    [Fact]
+    public async Task A_read_only_user_cannot_run_an_endpoint_even_if_the_call_reaches_the_proxy()
+    {
+        // The screen hides the run button for this role, but hiding a control is not a
+        // control: the check has to hold when the call arrives anyway.
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        var readOnly = await AddUserAsync("okur", Roles.ReadOnly);
+        var response = await CallAsync(resolved.Definition!.Id, operation.Slug, readOnly);
+
+        Assert.False(response.Success);
+        Assert.Contains("yetkiniz yok", response.Error);
+        Assert.Equal(0, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_disabled_account_stops_working_without_waiting_for_its_session_to_expire()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var users = scope.ServiceProvider.GetRequiredService<IUserService>();
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        var userId = await AddUserAsync("gidecek", Roles.Developer);
+        Assert.True((await CallAsync(resolved.Definition!.Id, operation.Slug, userId)).Success);
+
+        await users.SetActiveAsync(int.Parse(userId), false);
+
+        var afterDisabling = await CallAsync(resolved.Definition.Id, operation.Slug, userId);
+        Assert.False(afterDisabling.Success);
+        Assert.Contains("etkin değil", afterDisabling.Error);
+    }
+
+    [Fact]
+    public async Task A_demoted_user_loses_access_on_the_next_call()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var users = scope.ServiceProvider.GetRequiredService<IUserService>();
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        var userId = await AddUserAsync("düşecek", Roles.Tester);
+        Assert.True((await CallAsync(resolved.Definition!.Id, operation.Slug, userId)).Success);
+
+        await users.SetRoleAsync(int.Parse(userId), Roles.ReadOnly);
+
+        Assert.False((await CallAsync(resolved.Definition.Id, operation.Slug, userId)).Success);
+    }
+
+    [Fact]
+    public async Task A_call_without_a_signed_in_user_is_refused()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        Assert.False((await CallAsync(resolved.Definition!.Id, operation.Slug, null)).Success);
+        Assert.False((await CallAsync(resolved.Definition.Id, operation.Slug, "9999")).Success);
+    }
+
+    [Fact]
+    public async Task An_api_restricted_to_a_role_cannot_be_called_by_another_role()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        await definitions.UpdateMetadataAsync(new UpdateApiRequest
+        {
+            Id = resolved.Definition!.Id,
+            Name = resolved.Definition.Name,
+            BaseUrl = resolved.Definition.BaseUrl,
+            AllowedRoles = Roles.Admin,
+            Actor = "dev",
+        });
+
+        var tester = await AddUserAsync("testçi", Roles.Tester);
+        var response = await CallAsync(resolved.Definition.Id, operation.Slug, tester);
+
+        Assert.False(response.Success);
+        Assert.Contains("yetkiniz yok", response.Error);
     }
 
     [Fact]

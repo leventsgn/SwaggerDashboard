@@ -326,7 +326,7 @@ public class ApiDefinitionServiceTests : IDisposable
     [Fact]
     public void Derives_the_base_url_from_the_document_servers_entry()
     {
-        var dashboard = new DashboardDocument { Servers = { "https://api.company.com/v1" } };
+        var dashboard = new DashboardDocument { Servers = { new DashboardServer { Url = "https://api.company.com/v1" } } };
 
         var baseUrl = ApiDefinitionService.DeriveBaseUrl(
             new Uri("https://api.company.com/swagger/v1/swagger.json"), dashboard);
@@ -337,7 +337,7 @@ public class ApiDefinitionServiceTests : IDisposable
     [Fact]
     public void Resolves_a_relative_server_entry_against_the_document_url()
     {
-        var dashboard = new DashboardDocument { Servers = { "/api/v2" } };
+        var dashboard = new DashboardDocument { Servers = { new DashboardServer { Url = "/api/v2" } } };
 
         var baseUrl = ApiDefinitionService.DeriveBaseUrl(
             new Uri("https://api.company.com/swagger/v1/swagger.json"), dashboard);
@@ -348,7 +348,7 @@ public class ApiDefinitionServiceTests : IDisposable
     [Fact]
     public void Skips_a_templated_server_entry_and_falls_back_to_the_document_origin()
     {
-        var dashboard = new DashboardDocument { Servers = { "https://{region}.company.com/v1" } };
+        var dashboard = new DashboardDocument { Servers = { new DashboardServer { Url = "https://{region}.company.com/v1" } } };
 
         var baseUrl = ApiDefinitionService.DeriveBaseUrl(
             new Uri("https://api.company.com/swagger/v1/swagger.json"), dashboard);

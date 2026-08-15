@@ -22,7 +22,7 @@ public class DashboardGeneratorTests
 
         Assert.Equal("Customer API", dashboard.Title);
         Assert.Equal("1.4.0", dashboard.Version);
-        Assert.Contains("https://api.company.com/v1", dashboard.Servers);
+        Assert.Contains(dashboard.Servers, server => server.Url == "https://api.company.com/v1");
         Assert.Equal(DashboardDocument.CurrentSchemaVersion, dashboard.SchemaVersion);
 
         var methods = dashboard.Operations.Select(o => o.Method).Distinct().ToList();

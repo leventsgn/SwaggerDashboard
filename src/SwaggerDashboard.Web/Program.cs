@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Http.Features;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -46,6 +47,13 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
+
+        // The cookie carries the role and the account state as they were at sign-in. Without
+        // this the only way to revoke either was to wait out the eight hour lifetime, so a
+        // demoted administrator kept administrative rights — long enough to grant themselves
+        // a fresh account. The stored user is re-read periodically and the session dropped
+        // when the account is gone, disabled, or no longer holds the role it signed in with.
+        options.Events.OnValidatePrincipal = SessionRevalidation.ValidateAsync;
     });
 
 builder.Services.AddAuthorization(options =>
@@ -81,13 +89,19 @@ builder.Services.AddRateLimiter(options =>
             "İstek sınırı aşıldı, biraz sonra tekrar deneyin.", cancellationToken);
     };
 
-    // The login endpoint is the one anonymous write path, so it gets its own bucket.
-    options.AddFixedWindowLimiter(RateLimitPolicies.Login, limiter =>
-    {
-        limiter.PermitLimit = 10;
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.QueueLimit = 0;
-    });
+    // The login endpoint is the one anonymous write path, so it gets its own bucket — one
+    // per caller address. A single shared bucket throttled the endpoint rather than the
+    // client: ten failed attempts from anywhere locked every user out of signing in, which
+    // is a cheaper denial of service than the brute force it was meant to stop.
+    options.AddPolicy(RateLimitPolicies.Login, context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "bilinmeyen",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
 });
 
 // Uploaded files are buffered in memory before being forwarded, so the ceiling is modest.
@@ -126,16 +140,24 @@ var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/error", createScopeForErrors: true);
-    app.UseHsts();
 }
 
 // Must run before anything reads the scheme or the caller's address: the HTTPS redirect,
-// the secure cookie policy and the client IP written to the audit log all depend on it.
+// HSTS, the secure cookie policy and the client IP written to the audit log all depend on it.
 if (hosting.BehindReverseProxy)
 {
     app.UseForwardedHeaders();
     app.Logger.LogInformation(
         "Trusting X-Forwarded-* headers. The application must not be reachable except through its proxy.");
+}
+
+// After the forwarded headers, not before. HSTS skips any request it believes arrived over
+// plain HTTP, and behind a TLS-terminating proxy that is every request until the scheme has
+// been rewritten — so the header was never sent in exactly the topology the deployment guide
+// describes.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
 }
 
 app.Use(async (context, next) =>

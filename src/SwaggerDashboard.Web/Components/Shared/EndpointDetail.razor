@@ -106,6 +106,13 @@
             @if (IsFileUpload)
             {
                 <div class="sd-upload">
+                    <label class="sd-field-label">
+                        @FileFieldLabel
+                        @if (IsFileRequired)
+                        {
+                            <span class="sd-required" title="Zorunlu">*</span>
+                        }
+                    </label>
                     <InputFile OnChange="OnFilesSelected" multiple class="form-control form-control-sm" />
                     @if (_files.Count > 0)
                     {
@@ -117,15 +124,34 @@
                         </ul>
                     }
                 </div>
+
+                @* The other parts of a multipart body are ordinary fields and are sent with
+                   the file. They used to be filled with generated values and sent without
+                   ever being rendered, so the request carried data the user could not see. *@
+                @foreach (var child in NonFileFields)
+                {
+                    <SchemaField Node="child" OnChanged="OnFormChanged" />
+                }
             }
             else
             {
-                <div class="sd-body-tabs">
-                    <button type="button" class="@(_rawMode ? null : "active")" @onclick="SwitchToForm">Form</button>
-                    <button type="button" class="@(_rawMode ? "active" : null)" @onclick="SwitchToRaw">Raw JSON</button>
-                </div>
+                @if (IsRawOnlyBody)
+                {
+                    <p class="sd-field-help">
+                        <strong>@_contentType</strong> gövdesi dokümandan üretilemez; içeriği
+                        siz yazmalısınız. Yazdığınız metin olduğu gibi, bu içerik tipiyle
+                        gönderilir.
+                    </p>
+                }
+                else
+                {
+                    <div class="sd-body-tabs">
+                        <button type="button" class="@(_rawMode ? null : "active")" @onclick="SwitchToForm">Form</button>
+                        <button type="button" class="@(_rawMode ? "active" : null)" @onclick="SwitchToRaw">Raw JSON</button>
+                    </div>
+                }
 
-                @if (_rawMode)
+                @if (_rawMode || IsRawOnlyBody)
                 {
                     <textarea class="form-control sd-json" rows="14" value="@_rawBody" @onchange="OnRawChanged"></textarea>
                     @if (_rawParseError is not null)
@@ -399,8 +425,39 @@
     private bool IsFileUpload =>
         _contentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Content types whose fields travel as form parts rather than as a JSON document.
+    /// </summary>
+    private bool IsFormEncoded =>
+        IsFileUpload ||
+        _contentType.Contains("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsJsonBody => _contentType.Contains("json", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsPlainText =>
+        _contentType.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A body the platform cannot generate: XML, CSV, anything else. The user writes it, and
+    /// the editor says so rather than handing the target a JSON document under that label.
+    /// </summary>
+    private bool IsRawOnlyBody => !IsJsonBody && !IsFormEncoded && !IsPlainText;
+
     /// <summary>There is nothing to fill when the operation takes no input at all.</summary>
-    private bool HasFillableFields => _parameterNodes.Count > 0 || (_bodyNode is not null && !IsFileUpload);
+    private bool HasFillableFields => _parameterNodes.Count > 0 || _bodyNode is not null;
+
+    /// <summary>The parts of a multipart body that are not the file itself.</summary>
+    private IEnumerable<FormNode> NonFileFields =>
+        _bodyNode?.Children.Where(c => c.EffectiveSchema.Format != "binary") ?? [];
+
+    private FieldProperty? FileProperty =>
+        _bodyContent?.Schema.Properties.FirstOrDefault(p =>
+            p.Schema.Format == "binary" ||
+            (p.Schema.Type == SchemaTypes.Array && p.Schema.Items?.Format == "binary"));
+
+    private string FileFieldLabel => FileProperty?.Name ?? "Dosya";
+
+    private bool IsFileRequired => FileProperty?.Required == true;
 
     /// <summary>
     /// Fills the empty fields of the whole request with generated sample values.
@@ -458,6 +515,21 @@
         }
 
         _saved = await SavedRequestService.ListAsync(Definition.Id, Operation.Slug, UserId);
+        await LoadHistoryAsync();
+    }
+
+    /// <summary>
+    /// Reloads the call list. Called after every run: a history that only refreshes when the
+    /// endpoint is reopened is always one visit behind the calls the user just made.
+    /// </summary>
+    private async Task LoadHistoryAsync()
+    {
+        if (UserId is null)
+        {
+            _history = [];
+            return;
+        }
+
         _history = await LogService.GetForEndpointAsync(
             Definition.Id, Operation.Slug, UserId, HistoryCount);
     }
@@ -904,19 +976,25 @@
     private async Task ExecuteAsync()
     {
         _validationError = null;
+
+        // The request is composed before the panel is told a call is starting. Announcing it
+        // first and then returning on a validation error left the response panel claiming a
+        // request was in flight for the rest of the session, even after switching endpoints.
+        var request = BuildRequest();
+
+        if (request is null)
+        {
+            return;
+        }
+
         _executing = true;
         await OnExecuted.InvokeAsync(null);
 
         try
         {
-            var request = BuildRequest();
-            if (request is null)
-            {
-                return;
-            }
-
             var response = await ProxyService.ExecuteAsync(request);
             await OnExecuted.InvokeAsync(response);
+            await LoadHistoryAsync();
         }
         finally
         {
@@ -948,7 +1026,7 @@
             request.Files.Add(file);
         }
 
-        if (IsFileUpload && _bodyContent is not null)
+        if (IsFormEncoded && _bodyContent is not null)
         {
             foreach (var property in _bodyContent.Schema.Properties.Where(p => p.Schema.Format != "binary"))
             {
@@ -963,16 +1041,29 @@
         return request;
     }
 
+    /// <summary>
+    /// Renders the request body in the encoding the operation declares.
+    /// </summary>
+    /// <remarks>
+    /// Form encoded operations carry their values as fields, not as a body. A text/plain body
+    /// is the value itself: serialising it as JSON would send the quotes as part of the
+    /// payload. Anything the platform cannot generate is whatever the user typed.
+    /// </remarks>
     private string? BuildBody()
     {
-        if (Operation.RequestBody is null || IsFileUpload)
+        if (Operation.RequestBody is null || IsFormEncoded)
         {
             return null;
         }
 
-        if (_rawMode)
+        if (_rawMode || IsRawOnlyBody)
         {
             return string.IsNullOrWhiteSpace(_rawBody) ? null : _rawBody;
+        }
+
+        if (IsPlainText)
+        {
+            return string.IsNullOrEmpty(_bodyNode?.Value) ? null : _bodyNode.Value;
         }
 
         return _bodyNode?.ToJsonString();

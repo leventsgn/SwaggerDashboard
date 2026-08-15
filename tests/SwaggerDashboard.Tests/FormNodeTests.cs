@@ -75,13 +75,72 @@ public class FormNodeTests
     }
 
     [Fact]
-    public void An_example_prefills_the_field_without_forcing_it_to_be_sent()
+    public void An_example_prefills_the_field_and_ticks_it()
     {
+        // A value shown in the form is a value that gets sent. The two used to disagree: the
+        // example appeared in the field but the field was unticked, so it was sent anyway
+        // (the tick was ignored) — and once the tick is honoured, leaving it off would hide
+        // the opposite surprise, a filled field silently dropped.
         var schema = new FieldSchema { Type = SchemaTypes.String, Example = "ornek" };
         var node = new FormNode(schema, "q");
 
         Assert.Equal("ornek", node.Value);
-        Assert.False(node.Included);
+        Assert.True(node.Included);
+    }
+
+    [Fact]
+    public void Unticking_an_optional_field_keeps_it_out_of_the_body()
+    {
+        var schema = new FieldSchema
+        {
+            Type = SchemaTypes.Object,
+            Properties =
+            [
+                new FieldProperty { Name = "ad", Schema = new FieldSchema { Type = SchemaTypes.String }, Required = true },
+                new FieldProperty { Name = "yas", Schema = new FieldSchema { Type = SchemaTypes.Integer } },
+            ],
+        };
+
+        var node = new FormNode(schema, null, true) { Included = true };
+        node.FillWithSamples();
+
+        Assert.Contains("yas", node.ToJsonString());
+
+        node.Children.Single(c => c.Name == "yas").SetIncluded(false);
+
+        Assert.DoesNotContain("yas", node.ToJsonString());
+        Assert.Contains("ad", node.ToJsonString());
+    }
+
+    [Fact]
+    public void Ticking_a_nested_field_carries_the_object_above_it()
+    {
+        // Otherwise the city the user asked for is dropped because the address it lives in
+        // was never ticked.
+        var schema = new FieldSchema
+        {
+            Type = SchemaTypes.Object,
+            Properties =
+            [
+                new FieldProperty
+                {
+                    Name = "adres",
+                    Schema = new FieldSchema
+                    {
+                        Type = SchemaTypes.Object,
+                        Properties = [new FieldProperty { Name = "sehir", Schema = new FieldSchema { Type = SchemaTypes.String } }],
+                    },
+                },
+            ],
+        };
+
+        var node = new FormNode(schema, null, true) { Included = true };
+        var city = node.Children.Single().Children.Single();
+
+        city.Value = "İzmir";
+        city.SetIncluded(true);
+
+        Assert.Contains("İzmir", node.ToJsonString());
     }
 
     [Fact]

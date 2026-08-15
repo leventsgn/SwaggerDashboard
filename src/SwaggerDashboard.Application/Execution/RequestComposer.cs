@@ -50,9 +50,20 @@ public static class RequestComposer
                 continue;
             }
 
+            var values = node.IsArray
+                ? node.Items.Select(i => i.Value).Where(v => !string.IsNullOrEmpty(v)).ToList()
+                : [];
+
             var value = node.Value;
 
-            if (string.IsNullOrEmpty(value) && !node.IsArray)
+            if (node.IsArray)
+            {
+                if (values.Count == 0)
+                {
+                    continue;
+                }
+            }
+            else if (string.IsNullOrEmpty(value))
             {
                 if (parameter.Required && parameter.In == ParameterLocations.Path)
                 {
@@ -69,26 +80,29 @@ public static class RequestComposer
             switch (parameter.In)
             {
                 case ParameterLocations.Path:
-                    request.PathParameters[parameter.Name] = value;
+                    // A path array uses the simple style: comma separated in one segment.
+                    request.PathParameters[parameter.Name] =
+                        node.IsArray ? string.Join(',', values) : value;
                     break;
 
                 case ParameterLocations.Header:
-                    request.Headers[parameter.Name] = value;
+                    // Header and cookie arrays were sent as an empty string before: the array
+                    // node's own Value is always empty, and only the query branch looked at
+                    // the items. The values are joined, which is the "simple" style OpenAPI
+                    // defines for both.
+                    request.Headers[parameter.Name] =
+                        node.IsArray ? string.Join(',', values) : value;
                     break;
 
                 case ParameterLocations.Cookie:
-                    request.Cookies[parameter.Name] = value;
+                    request.Cookies[parameter.Name] =
+                        node.IsArray ? string.Join(',', values) : value;
                     break;
 
                 default:
                     if (node.IsArray)
                     {
-                        // Array query parameters repeat the key, which is the default "form"
-                        // style with explode enabled.
-                        foreach (var item in node.Items.Where(i => !string.IsNullOrEmpty(i.Value)))
-                        {
-                            request.QueryParameters.Add(new(parameter.Name, item.Value));
-                        }
+                        AddQueryArray(parameter, values, request);
                     }
                     else
                     {
@@ -100,6 +114,44 @@ public static class RequestComposer
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Serializes an array query parameter in the style the document declares.
+    /// </summary>
+    /// <remarks>
+    /// The document says how it wants an array on the wire, and the four forms are not
+    /// interchangeable: a target expecting <c>tags=a|b</c> receives nothing usable from
+    /// <c>tags=a&amp;tags=b</c>. Style and explode were parsed and stored but never read, so
+    /// every array went out as repeated keys and three of the four cases were wrong.
+    /// </remarks>
+    private static void AddQueryArray(
+        DashboardParameter parameter,
+        IReadOnlyList<string> values,
+        ProxyRequest request)
+    {
+        // The reader fills in the specification's defaults, so Explode is true for form style
+        // and false for the delimited ones even when the document omits it.
+        var explode = parameter.Explode;
+
+        var separator = parameter.Style?.ToLowerInvariant() switch
+        {
+            "pipedelimited" => "|",
+            "spacedelimited" => " ",
+            _ => ",",
+        };
+
+        if (explode)
+        {
+            foreach (var item in values)
+            {
+                request.QueryParameters.Add(new(parameter.Name, item));
+            }
+
+            return;
+        }
+
+        request.QueryParameters.Add(new(parameter.Name, string.Join(separator, values)));
     }
 
     /// <summary>

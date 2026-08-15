@@ -9,7 +9,7 @@ namespace SwaggerDashboard.Application.Dashboards;
 public class DashboardDocument
 {
     /// <summary>Increment when the generator output shape changes.</summary>
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -22,7 +22,7 @@ public class DashboardDocument
     public string? OpenApiVersion { get; set; }
 
     /// <summary>Server URLs declared by the document, absolute where resolvable.</summary>
-    public List<string> Servers { get; set; } = [];
+    public List<DashboardServer> Servers { get; set; } = [];
 
     public List<DashboardSecurityScheme> SecuritySchemes { get; set; } = [];
 
@@ -42,6 +42,20 @@ public class DashboardTag
 
     /// <summary>Slugs of the operations grouped under this tag, in document order.</summary>
     public List<string> OperationSlugs { get; set; } = [];
+}
+
+/// <summary>
+/// One entry of the document's servers list.
+/// </summary>
+/// <remarks>
+/// The description is kept because it is the only name the document gives a server, and the
+/// platform turns the extra servers into environments the user has to recognise.
+/// </remarks>
+public class DashboardServer
+{
+    public string Url { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
 }
 
 public class DashboardSecurityScheme

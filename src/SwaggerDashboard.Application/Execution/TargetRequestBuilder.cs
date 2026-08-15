@@ -79,16 +79,22 @@ public static class TargetRequestBuilder
             headers["Cookie"] = string.Join("; ", request.Cookies.Select(c => $"{c.Key}={c.Value}"));
         }
 
-        ApplyCredential(headers, credential);
+        var credentialHeaders = ApplyCredential(headers, credential);
 
-        return new BuildResult(true, builder.Uri, operation.Method, headers, null);
+        return new BuildResult(true, builder.Uri, operation.Method, headers, null)
+        {
+            CredentialHeaders = credentialHeaders,
+        };
     }
 
-    private static void ApplyCredential(IDictionary<string, string> headers, ApiCredential? credential)
+    /// <summary>Applies the credential and returns the names of the headers it wrote.</summary>
+    private static List<string> ApplyCredential(IDictionary<string, string> headers, ApiCredential? credential)
     {
+        var written = new List<string>();
+
         if (credential is null)
         {
-            return;
+            return written;
         }
 
         switch (credential.Kind)
@@ -97,11 +103,13 @@ public static class TargetRequestBuilder
                 headers["Authorization"] = credential.Secret.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
                     ? credential.Secret
                     : "Bearer " + credential.Secret;
+                written.Add("Authorization");
                 break;
 
             case ApiAuthKind.Basic when !string.IsNullOrWhiteSpace(credential.UserName):
                 var raw = $"{credential.UserName}:{credential.Secret}";
                 headers["Authorization"] = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(raw));
+                written.Add("Authorization");
                 break;
 
             case ApiAuthKind.ApiKey when
@@ -109,8 +117,11 @@ public static class TargetRequestBuilder
                 !string.IsNullOrWhiteSpace(credential.Secret) &&
                 !string.Equals(credential.ParameterIn, "query", StringComparison.OrdinalIgnoreCase):
                 headers[credential.ParameterName] = credential.Secret;
+                written.Add(credential.ParameterName);
                 break;
         }
+
+        return written;
     }
 
     private static string BuildQuery(
@@ -194,6 +205,16 @@ public static class TargetRequestBuilder
         Dictionary<string, string> Headers,
         string? Error)
     {
+        /// <summary>
+        /// Which of the headers carry the credential.
+        /// </summary>
+        /// <remarks>
+        /// An API key uses whatever header name the document declares, so the sender cannot
+        /// recognise it. Naming them here lets the redirect loop drop exactly those when a hop
+        /// crosses to another origin.
+        /// </remarks>
+        public List<string> CredentialHeaders { get; init; } = [];
+
         public static BuildResult Fail(string error) =>
             new(false, null, string.Empty, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), error);
     }

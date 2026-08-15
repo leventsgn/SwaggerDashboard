@@ -7,7 +7,9 @@ using SwaggerDashboard.Application.Abstractions;
 using SwaggerDashboard.Application.Configuration;
 using SwaggerDashboard.Application.Dashboards;
 using SwaggerDashboard.Application.Execution;
+using SwaggerDashboard.Domain.Entities;
 using SwaggerDashboard.Infrastructure.Http;
+using SwaggerDashboard.Infrastructure.Identity;
 using SwaggerDashboard.Infrastructure.Persistence;
 
 namespace SwaggerDashboard.Infrastructure.Services;
@@ -20,6 +22,7 @@ public class ApiProxyService : IApiProxyService
     private readonly SwaggerDashboardDbContext _db;
     private readonly IApiDefinitionService _definitionService;
     private readonly IApiCredentialStore _credentialStore;
+    private readonly IUserService _userService;
     private readonly IOAuthTokenService _tokenService;
     private readonly IResponseDownloadStore _downloadStore;
     private readonly GuardedHttpSender _sender;
@@ -31,6 +34,7 @@ public class ApiProxyService : IApiProxyService
         SwaggerDashboardDbContext db,
         IApiDefinitionService definitionService,
         IApiCredentialStore credentialStore,
+        IUserService userService,
         IOAuthTokenService tokenService,
         IResponseDownloadStore downloadStore,
         GuardedHttpSender sender,
@@ -41,6 +45,7 @@ public class ApiProxyService : IApiProxyService
         _db = db;
         _definitionService = definitionService;
         _credentialStore = credentialStore;
+        _userService = userService;
         _tokenService = tokenService;
         _downloadStore = downloadStore;
         _sender = sender;
@@ -62,6 +67,12 @@ public class ApiProxyService : IApiProxyService
         if (!definition.IsActive)
         {
             return ProxyResponse.Failure($"'{definition.Name}' pasif durumda, istek gönderilemez.");
+        }
+
+        var refusal = await AuthorizeAsync(request.UserId, definition, cancellationToken);
+        if (refusal is not null)
+        {
+            return ProxyResponse.Failure(refusal);
         }
 
         var dashboard = await _definitionService.GetDashboardAsync(definition.Id, cancellationToken);
@@ -134,6 +145,12 @@ public class ApiProxyService : IApiProxyService
 
                     message.Headers.TryAddWithoutValidation(name, value);
                 }
+
+                // Names the headers that carry the credential so the redirect loop can drop
+                // them if a hop leaves the origin the credential was entered for.
+                message.Options.Set(
+                    OutboundHttpClient.CredentialHeaderMarker,
+                    (IReadOnlyList<string>)built.CredentialHeaders);
 
                 message.Content = contentFactory();
                 return message;
@@ -253,13 +270,65 @@ public class ApiProxyService : IApiProxyService
     };
 
     /// <summary>
-    /// Produces the outbound body. Multipart is assembled from the uploaded files and form
-    /// fields; a form encoded operation uses the field list; everything else sends the raw
-    /// body with the declared content type.
+    /// Decides whether this caller may run this endpoint, and returns the refusal to report.
     /// </summary>
+    /// <remarks>
+    /// The check belongs here, not in the screen. Rendering the run button behind a role test
+    /// hides the action; it does not prevent it, and the identity in a session cookie is a
+    /// snapshot from sign-in time. Reading the user back from the database on every call is
+    /// what makes revoking a role or disabling an account take effect immediately, including
+    /// inside a circuit that is already open.
+    /// </remarks>
+    private async Task<string?> AuthorizeAsync(
+        string? userId,
+        ApiDefinition definition,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(userId, out var id))
+        {
+            return "Endpoint çalıştırmak için giriş yapmalısınız.";
+        }
+
+        var user = await _userService.FindByIdAsync(id, cancellationToken);
+
+        if (user is null || !user.IsActive)
+        {
+            return "Hesabınız artık etkin değil. Yöneticinizle görüşün.";
+        }
+
+        if (!Array.Exists(Roles.CanExecute, r => string.Equals(r, user.Role, StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Endpoint çalıştırma yetkiniz yok.";
+        }
+
+        if (!ApiDefinitionService.IsVisibleTo(definition, user.Role))
+        {
+            return $"'{definition.Name}' için yetkiniz yok.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Produces the outbound body.
+    /// </summary>
+    /// <remarks>
+    /// The encoding follows the content type the operation declares, not whichever collection
+    /// happens to be filled. Deciding by "are there files?" sent a multipart operation with no
+    /// file picked as form encoding, and a form encoded operation as a JSON document labelled
+    /// x-www-form-urlencoded — both of which the target rejects for reasons the user cannot
+    /// see from the form.
+    /// </remarks>
     private static (string? BodyText, Func<HttpContent?> Factory) BuildContent(ProxyRequest request)
     {
-        if (request.Files.Count > 0)
+        var declared = string.IsNullOrWhiteSpace(request.ContentType)
+            ? "application/json"
+            : request.ContentType;
+
+        var isMultipart = declared.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase);
+        var isFormEncoded = declared.Contains("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase);
+
+        if (isMultipart || request.Files.Count > 0)
         {
             var description = string.Join(", ",
                 request.FormFields.Select(f => $"{f.Key}={f.Value}")
@@ -285,7 +354,7 @@ public class ApiProxyService : IApiProxyService
             });
         }
 
-        if (request.FormFields.Count > 0)
+        if (isFormEncoded || request.FormFields.Count > 0)
         {
             var encoded = string.Join("&", request.FormFields.Select(f =>
                 $"{Uri.EscapeDataString(f.Key)}={Uri.EscapeDataString(f.Value ?? string.Empty)}"));
@@ -299,9 +368,7 @@ public class ApiProxyService : IApiProxyService
             return (null, () => null);
         }
 
-        var contentType = string.IsNullOrWhiteSpace(request.ContentType)
-            ? "application/json"
-            : request.ContentType;
+        var contentType = declared;
 
         var mediaType = contentType.Split(';')[0].Trim();
 

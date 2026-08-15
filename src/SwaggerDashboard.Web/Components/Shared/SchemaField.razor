@@ -157,7 +157,7 @@
 
     private async Task OnIncludedChanged(ChangeEventArgs args)
     {
-        Node.Included = args.Value is true;
+        Node.SetIncluded(args.Value is true);
         await OnChanged.InvokeAsync();
     }
 

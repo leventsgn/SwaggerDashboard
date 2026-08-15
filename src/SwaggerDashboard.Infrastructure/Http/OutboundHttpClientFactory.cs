@@ -15,6 +15,17 @@ public static class OutboundHttpClient
     public const string Name = "swagger-dashboard-outbound";
 
     /// <summary>
+    /// Names of headers on a request that carry a credential.
+    /// </summary>
+    /// <remarks>
+    /// An API key travels under whatever header the swagger document names, so the sender
+    /// cannot recognise it from a fixed list. The builder marks it here instead, and the
+    /// redirect loop drops the marked headers when a hop leaves the original origin.
+    /// </remarks>
+    public static readonly HttpRequestOptionsKey<IReadOnlyList<string>> CredentialHeaderMarker =
+        new("swagger-dashboard-credential-headers");
+
+    /// <summary>
     /// Builds the primary handler. Redirects are followed manually by the callers so that
     /// each hop can be re-validated, and the connect callback re-checks the address the
     /// socket is really dialling, which is what closes the DNS rebinding window between

@@ -61,6 +61,15 @@ public class GuardedHttpSender
             HttpResponseMessage response;
             using var request = requestFactory(currentUri);
 
+            // A credential belongs to the origin it was entered for. Following a redirect
+            // with it attached hands the target's own token, password or client secret to
+            // whatever host the target names — which is the browser's rule too, and the
+            // reason this manual loop has to reimplement it.
+            if (!IsSameOrigin(uri, currentUri))
+            {
+                StripCredentials(request);
+            }
+
             try
             {
                 response = await client.SendAsync(
@@ -98,7 +107,28 @@ public class GuardedHttpSender
                 continue;
             }
 
-            var read = await ReadBoundedAsync(response, maxResponseBytes, timeoutSource.Token);
+            BoundedRead read;
+
+            try
+            {
+                read = await ReadBoundedAsync(response, maxResponseBytes, timeoutSource.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The timeout covers reading the body too. Without this the budget only
+                // applied to the headers, and a target that sent them and then went quiet
+                // held the request open indefinitely.
+                return GuardedResponse.Failed(
+                    $"Yanıt gövdesi {outbound.TimeoutSeconds} saniye içinde tamamlanmadı.", currentUri);
+            }
+            catch (Exception ex) when (ex is IOException or HttpRequestException)
+            {
+                // A target that closes the socket mid-body throws here rather than at send
+                // time; letting it escape killed the Blazor circuit and left no log row.
+                return GuardedResponse.Failed(
+                    $"Yanıt gövdesi alınamadı: {ex.Message}", currentUri);
+            }
+
             return new GuardedResponse(
                 GuardedOutcome.Completed,
                 currentUri,
@@ -114,6 +144,39 @@ public class GuardedHttpSender
         }
 
         return GuardedResponse.Failed("Yönlendirme sınırı aşıldı.", currentUri);
+    }
+
+    /// <summary>
+    /// Header names that carry a secret and must not cross an origin boundary.
+    /// </summary>
+    /// <remarks>
+    /// Authorization and the cookie header are the standard ones. The API-key header is named
+    /// by the document, so its name is not known here; it is dropped through the request's own
+    /// marker instead — see <see cref="OutboundHttpClient.CredentialHeaderMarker"/>.
+    /// </remarks>
+    private static readonly string[] CredentialHeaders =
+        ["Authorization", "Cookie", "Proxy-Authorization"];
+
+    private static bool IsSameOrigin(Uri first, Uri second) =>
+        Uri.Compare(first, second, UriComponents.SchemeAndServer, UriFormat.UriEscaped,
+            StringComparison.OrdinalIgnoreCase) == 0;
+
+    private static void StripCredentials(HttpRequestMessage request)
+    {
+        foreach (var header in CredentialHeaders)
+        {
+            request.Headers.Remove(header);
+        }
+
+        // Whatever the caller marked as carrying a credential goes too: the API-key header's
+        // name comes from the swagger document, so it cannot be listed here.
+        if (request.Options.TryGetValue(OutboundHttpClient.CredentialHeaderMarker, out var names))
+        {
+            foreach (var name in names)
+            {
+                request.Headers.Remove(name);
+            }
+        }
     }
 
     private static bool IsRedirect(HttpStatusCode statusCode) =>
@@ -142,7 +205,9 @@ public class GuardedHttpSender
 
     /// <summary>
     /// Reads at most <paramref name="maxBytes"/> so a huge or endless response cannot
-    /// exhaust memory. Content-Length is only a hint, so the cap is enforced while reading.
+    /// exhaust memory. Content-Length is only a hint, so the cap is enforced while reading,
+    /// and reading stops at the cap: the reported total is then what was read, not what the
+    /// target intended to send.
     /// </summary>
     private static async Task<BoundedRead> ReadBoundedAsync(
         HttpResponseMessage response,
@@ -179,6 +244,13 @@ public class GuardedHttpSender
             else
             {
                 truncated = true;
+            }
+
+            if (truncated)
+            {
+                // Stop at the cap instead of draining the rest. Reading on only buys an exact
+                // byte count, and an endless body would be followed forever to get it.
+                break;
             }
         }
 

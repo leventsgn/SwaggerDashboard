@@ -44,7 +44,15 @@ public class FormNode
     /// Whether an optional property is sent at all. Required properties are always included;
     /// optional ones default to excluded so a generated body does not send a wall of nulls.
     /// </summary>
+    /// <remarks>
+    /// This is the only thing that decides whether an optional field is sent. It used to be
+    /// overruled by "does the field have a value?", which made the tick box on the form inert:
+    /// unticking a filled field changed nothing about the request.
+    /// </remarks>
     public bool Included { get; set; }
+
+    /// <summary>The node this one hangs under, so including a field can include its parents.</summary>
+    public FormNode? Parent { get; private set; }
 
     public List<FormNode> Children { get; } = [];
 
@@ -68,6 +76,9 @@ public class FormNode
 
         var schema = EffectiveSchema;
 
+        // Every path that writes a value also ticks the field. A value shown in a form the
+        // user is about to send but silently dropped is the same defect as one sent without
+        // being shown, in the other direction.
         if (!string.IsNullOrEmpty(schema.Default))
         {
             Value = schema.Default;
@@ -76,6 +87,7 @@ public class FormNode
         else if (!string.IsNullOrEmpty(schema.Example))
         {
             Value = schema.Example;
+            Included = true;
         }
         else if (schema.Enum.Count > 0 && Required)
         {
@@ -86,8 +98,34 @@ public class FormNode
         {
             foreach (var property in schema.Properties)
             {
-                Children.Add(new FormNode(property.Schema, property.Name, property.Required));
+                Children.Add(new FormNode(property.Schema, property.Name, property.Required)
+                {
+                    Parent = this,
+                });
             }
+        }
+    }
+
+    /// <summary>
+    /// Ticks or unticks this field.
+    /// </summary>
+    /// <remarks>
+    /// Including a nested field includes the objects above it: a city inside an address that
+    /// is itself unticked would otherwise be dropped on the way out, which is not what the
+    /// person who ticked the city asked for.
+    /// </remarks>
+    public void SetIncluded(bool included)
+    {
+        Included = included;
+
+        if (!included)
+        {
+            return;
+        }
+
+        for (var parent = Parent; parent is not null; parent = parent.Parent)
+        {
+            parent.Included = true;
         }
     }
 
@@ -154,15 +192,15 @@ public class FormNode
         }
 
         Value = sample;
-        Included = true;
+        SetIncluded(true);
     }
 
     public void AddItem()
     {
         var itemSchema = EffectiveSchema.Items ?? new FieldSchema();
-        var item = new FormNode(itemSchema, $"[{Items.Count}]", true) { Included = true };
+        var item = new FormNode(itemSchema, $"[{Items.Count}]", true) { Included = true, Parent = this };
         Items.Add(item);
-        Included = true;
+        SetIncluded(true);
     }
 
     public void RemoveItem(FormNode item)
@@ -184,7 +222,7 @@ public class FormNode
 
             foreach (var child in Children)
             {
-                if (!child.Included && !child.Required && !child.HasValue())
+                if (!child.Included && !child.Required)
                 {
                     continue;
                 }
@@ -208,21 +246,6 @@ public class FormNode
         }
 
         return ScalarToJson(Value, schema);
-    }
-
-    private bool HasValue()
-    {
-        if (IsObject)
-        {
-            return Children.Any(c => c.Included || c.HasValue());
-        }
-
-        if (IsArray)
-        {
-            return Items.Count > 0;
-        }
-
-        return !string.IsNullOrEmpty(Value);
     }
 
     /// <summary>
@@ -290,7 +313,7 @@ public class FormNode
             {
                 if (child.Name is not null && obj.TryGetPropertyValue(child.Name, out var childNode))
                 {
-                    child.Included = true;
+                    child.SetIncluded(true);
                     child.LoadFrom(childNode);
                 }
                 else

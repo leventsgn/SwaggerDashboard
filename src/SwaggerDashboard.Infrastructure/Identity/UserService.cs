@@ -11,6 +11,16 @@ public interface IUserService
 
     Task<IReadOnlyList<DashboardUser>> ListAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reads the stored user behind a sign-in.
+    /// </summary>
+    /// <remarks>
+    /// The role and the active flag in a session cookie are a snapshot of the moment the user
+    /// signed in. Anything that acts on them — the proxy above all — has to ask the database
+    /// what is true now, or a revoked account keeps its old rights until the cookie expires.
+    /// </remarks>
+    Task<DashboardUser?> FindByIdAsync(int userId, CancellationToken cancellationToken = default);
+
     Task<DashboardUser> CreateAsync(
         string userName, string password, string role, string? displayName,
         CancellationToken cancellationToken = default);
@@ -59,6 +69,9 @@ public class UserService : IUserService
 
         return user;
     }
+
+    public async Task<DashboardUser?> FindByIdAsync(int userId, CancellationToken cancellationToken = default) =>
+        await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
     public async Task<IReadOnlyList<DashboardUser>> ListAsync(CancellationToken cancellationToken = default) =>
         await _db.Users.AsNoTracking().OrderBy(u => u.UserName).ToListAsync(cancellationToken);
