@@ -1,4 +1,5 @@
 @using System.Text.Json
+@using SwaggerDashboard.Application.Comparison
 @using SwaggerDashboard.Application.Execution
 @inject IJSRuntime Js
 
@@ -140,6 +141,71 @@
                         <tr><th>Kesildi mi</th><td>@(Response.Truncated ? "Evet, boyut sınırı aşıldı" : "Hayır")</td></tr>
                         </tbody>
                     </table>
+                    break;
+
+                case "Fark":
+                    @if (Previous is null)
+                    {
+                        <p class="text-secondary p-2">
+                            Karşılaştırmak için aynı endpointi bir kez daha çalıştırın. Bu sekme,
+                            son yanıtı bir öncekiyle alan alan karşılaştırır.
+                        </p>
+                    }
+                    else
+                    {
+                        <div class="sd-diff-head">
+                            <span class="sd-status @StatusClass(Previous.StatusCode)">
+                                @(Previous.StatusCode == 0 ? "HATA" : Previous.StatusCode.ToString())
+                            </span>
+                            <span class="sd-timing">@Previous.CompletedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                            <span class="sd-diff-arrow">→</span>
+                            <span class="sd-status @StatusClass(Response.StatusCode)">
+                                @(Response.StatusCode == 0 ? "HATA" : Response.StatusCode.ToString())
+                            </span>
+                            <span class="sd-timing">@Response.CompletedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </div>
+
+                        @if (Previous.StatusCode != Response.StatusCode)
+                        {
+                            <p class="sd-field-help px-2">
+                                Durum kodu değişti: @Previous.StatusCode → @Response.StatusCode.
+                            </p>
+                        }
+
+                        @if (Diff.Unsupported is not null)
+                        {
+                            <p class="text-secondary p-2">@Diff.Unsupported</p>
+                        }
+                        else if (Diff.AreEqual)
+                        {
+                            <p class="text-secondary p-2">İki yanıtın gövdesi alan bazında aynı.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm sd-table sd-diff-table">
+                                <thead>
+                                <tr><th>Alan</th><th>Önceki</th><th>Şimdiki</th></tr>
+                                </thead>
+                                <tbody>
+                                @foreach (var entry in Diff.Entries)
+                                {
+                                    <tr class="@DiffClass(entry.Kind)">
+                                        <td class="sd-break"><code>@entry.Path</code></td>
+                                        <td class="sd-break"><code>@(entry.Left ?? "—")</code></td>
+                                        <td class="sd-break"><code>@(entry.Right ?? "—")</code></td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+
+                            @if (Diff.Truncated)
+                            {
+                                <p class="sd-field-help px-2">
+                                    İlk @JsonDiff.MaxEntries fark gösteriliyor; daha fazlası var.
+                                </p>
+                            }
+                        }
+                    }
                     break;
 
                 case "Kod":

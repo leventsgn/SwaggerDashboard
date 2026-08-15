@@ -783,6 +783,33 @@ code, pre, .sd-code {
     max-width: 30rem;
 }
 
+/* ---------- response comparison ---------- */
+
+.sd-diff-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sd-2);
+    margin-bottom: var(--sd-2);
+}
+
+.sd-diff-arrow {
+    color: var(--sd-text-muted);
+}
+
+.sd-diff-table code {
+    font-size: var(--sd-text-xs);
+}
+
+/* The kind of change is on the row's edge, matching how the bulk run marks its
+   rows; a full row tint at thirty differences buries the values. */
+.sd-diff-table td:first-child {
+    border-left: 3px solid transparent;
+}
+
+.sd-diff-added td:first-child { border-left-color: var(--s-ok); }
+.sd-diff-removed td:first-child { border-left-color: var(--s-client); }
+.sd-diff-changed td:first-child { border-left-color: var(--s-redirect); }
+
 /* ---------- call history ---------- */
 
 .sd-history-list {

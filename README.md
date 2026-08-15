@@ -264,6 +264,25 @@ taban yoludur ve ortamdan ortama değişir. Eşleşmeyen bir adres kısmen doldu
 Getirilenler path ve query değerleri ile gövdedir. Başlıklar ve kimlik bilgileri getirilmez —
 loga maskelenerek yazılırlar. Toplu test çağrıları bu listede yer almaz (bkz. `IsBulkRun`).
 
+### Yanıt karşılaştırma
+
+Yanıt panelindeki **Fark** sekmesi, son yanıtı aynı endpointin bir önceki yanıtıyla alan alan
+karşılaştırır: eklenen, silinen ve değişen alanlar yol (`$.musteri.adres.sehir`) ve iki
+değeriyle listelenir. Durum kodu değiştiyse ayrıca söylenir.
+
+- Karşılaştırma **yapısaldır, metin değil.** Yalnızca anahtar sırası veya boşluk farkı olan
+  iki yanıt aynı yanıttır; metin karşılaştırması bu durumda gövdenin tamamını "değişti" diye
+  gösterir ve aranan tek alanı gömerdi.
+- Diziler **konuma göre** karşılaştırılır. Elemanları kimliğe göre eşlemek dokümanın vermediği
+  bir anahtar gerektirir; onu tahmin etmek, yanlış tahmin edilen dokümanlarda kendinden emin
+  ama hatalı bir sonuç üretirdi.
+- Taban, çalıştırılan bir önceki yanıttır ve devrede tutulur; loglardan okunmaz. Yanıt
+  gövdeleri yalnızca gövde loglaması açıkken saklanır, karşılaştırma ise her durumda
+  çalışmalıdır. Endpoint değiştirildiğinde taban sıfırlanır — iki ilgisiz çağrının
+  karşılaştırılması anlamsız olurdu.
+- JSON olmayan gövdelerde alan bazlı karşılaştırma yapılmaz ve bu söylenir. Fark listesi
+  300 satırla sınırlıdır; aşıldığında bu da yazılır.
+
 ### Favoriler ve son kullanılanlar
 
 Endpoint ekranındaki yıldız butonu endpointi kullanıcıya özel favorilere ekler; sol menüde

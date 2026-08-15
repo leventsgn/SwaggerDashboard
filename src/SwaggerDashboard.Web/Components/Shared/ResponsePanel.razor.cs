@@ -4,6 +4,7 @@ using System.Text.Unicode;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using SwaggerDashboard.Application.Abstractions;
+using SwaggerDashboard.Application.Comparison;
 using SwaggerDashboard.Application.Execution;
 
 namespace SwaggerDashboard.Web.Components.Shared;
@@ -21,11 +22,17 @@ public partial class ResponsePanel : IDisposable
     [Parameter]
     public ProxyResponse? Response { get; set; }
 
+    /// <summary>
+    /// The response this endpoint returned before the current one, if any.
+    /// </summary>
+    [Parameter]
+    public ProxyResponse? Previous { get; set; }
+
     [Parameter]
     public bool Executing { get; set; }
 
     private static readonly string[] Tabs =
-        ["Preview", "JSON Tree", "Raw", "Headers", "Request", "Timing", "Kod"];
+        ["Preview", "JSON Tree", "Raw", "Fark", "Headers", "Request", "Timing", "Kod"];
 
     private string _tab = "Preview";
     private string _codeLanguage = "cURL";
@@ -39,10 +46,30 @@ public partial class ResponsePanel : IDisposable
 
     private string PrettyBody => FormatJson(Response?.ResponseBody);
 
+    /// <summary>
+    /// Comparison of the previous response's body with the current one.
+    /// </summary>
+    /// <remarks>
+    /// Computed once per parameter change rather than per render: the diff walks both
+    /// documents, and a property read from markup would repeat that on every re-render.
+    /// </remarks>
+    private JsonDiffResult Diff { get; set; } = new([], false, null);
+
+    private static string DiffClass(JsonDiffKind kind) => kind switch
+    {
+        JsonDiffKind.Added => "sd-diff-added",
+        JsonDiffKind.Removed => "sd-diff-removed",
+        _ => "sd-diff-changed",
+    };
+
     protected override void OnParametersSet()
     {
         _codeCopied = false;
         ParseJson();
+
+        Diff = Previous is null || Response is null
+            ? new JsonDiffResult([], false, null)
+            : JsonDiff.Compare(Previous.ResponseBody, Response.ResponseBody);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -112,7 +112,7 @@ else if (_dashboard is not null && _definition is not null)
 
         @if (!_sweepOpen)
         {
-            <ResponsePanel Response="_response" Executing="_executing" />
+            <ResponsePanel Response="_response" Previous="_previousResponse" Executing="_executing" />
         }
     </div>
 }
@@ -125,6 +125,13 @@ else if (_dashboard is not null && _definition is not null)
     private ApiDefinition? _definition;
     private DashboardOperation? _selectedOperation;
     private ProxyResponse? _response;
+
+    /// <summary>
+    /// The response before the current one, for the same endpoint, so the two can be
+    /// compared. Kept in the circuit rather than read back from the log: response bodies are
+    /// only persisted when body logging is enabled, and the comparison has to work regardless.
+    /// </summary>
+    private ProxyResponse? _previousResponse;
     private CurrentUser _user = new(null, null, null, false);
 
     private string? _selectedSlug;
@@ -161,6 +168,7 @@ else if (_dashboard is not null && _definition is not null)
         _definition = null;
         _selectedOperation = null;
         _response = null;
+        _previousResponse = null;
         _sweepOpen = false;
 
         if (string.IsNullOrWhiteSpace(target))
@@ -268,7 +276,11 @@ else if (_dashboard is not null && _definition is not null)
         _selectedSlug = slug;
         _selectedOperation = _dashboard?.Operations
             .FirstOrDefault(o => string.Equals(o.Slug, slug, StringComparison.OrdinalIgnoreCase));
+
+        // Both responses belong to the endpoint that produced them; carrying them to another
+        // endpoint would offer a comparison between two unrelated calls.
         _response = null;
+        _previousResponse = null;
 
         // Picking a single endpoint leaves the bulk view; the two share the centre panel.
         _sweepOpen = false;
@@ -287,6 +299,14 @@ else if (_dashboard is not null && _definition is not null)
     private async Task OnExecuted(ProxyResponse? response)
     {
         _executing = response is null;
+
+        // A null response marks the start of a call: the one on screen becomes the baseline
+        // the next result is compared against.
+        if (response is null)
+        {
+            _previousResponse = _response ?? _previousResponse;
+        }
+
         _response = response;
 
         // A finished call changes what "recently used" means, so the shortcut list is
