@@ -7,6 +7,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using SwaggerDashboard.Application.Routing
 @inject IApiDefinitionService DefinitionService
+@inject IUserEndpointService UserEndpointService
 @inject CurrentUserAccessor CurrentUserAccessor
 @inject NavigationManager Navigation
 
@@ -55,6 +56,8 @@ else if (_dashboard is not null && _definition is not null)
                       SelectedSlug="@_selectedSlug"
                       Environments="_definition.Environments.ToList()"
                       SelectedEnvironment="@_environment"
+                      Favorites="_favorites"
+                      Recents="_recents"
                       OnSelect="SelectOperation"
                       OnEnvironmentChange="ChangeEnvironment" />
 
@@ -91,6 +94,8 @@ else if (_dashboard is not null && _definition is not null)
                                 Environment="@_environment"
                                 CanExecute="_user.CanExecute"
                                 UserId="@_user.UserId"
+                                IsFavorite="_favorites.Contains(_selectedOperation.Slug)"
+                                OnToggleFavorite="ToggleFavoriteAsync"
                                 OnExecuted="OnExecuted" />
             }
         </section>
@@ -118,6 +123,8 @@ else if (_dashboard is not null && _definition is not null)
     private bool _executing;
     private bool _wasProvisioned;
     private string? _loadedTarget;
+    private IReadOnlyCollection<string> _favorites = [];
+    private IReadOnlyList<string> _recents = [];
 
     protected override async Task OnParametersSetAsync()
     {
@@ -188,6 +195,33 @@ else if (_dashboard is not null && _definition is not null)
             _selectedOperation = _dashboard!.Operations
                 .FirstOrDefault(o => string.Equals(o.Slug, _selectedSlug, StringComparison.OrdinalIgnoreCase));
         }
+
+        await LoadUserStateAsync();
+    }
+
+    /// <summary>Loads the starred and recently used endpoints for the signed-in user.</summary>
+    private async Task LoadUserStateAsync()
+    {
+        if (_definition is null || _user.UserId is null)
+        {
+            _favorites = [];
+            _recents = [];
+            return;
+        }
+
+        _favorites = await UserEndpointService.GetFavoriteSlugsAsync(_definition.Id, _user.UserId);
+        _recents = await UserEndpointService.GetRecentSlugsAsync(_definition.Id, _user.UserId, 8);
+    }
+
+    private async Task ToggleFavoriteAsync(string slug)
+    {
+        if (_definition is null || _user.UserId is null)
+        {
+            return;
+        }
+
+        await UserEndpointService.ToggleFavoriteAsync(_definition.Id, slug, _user.UserId);
+        _favorites = await UserEndpointService.GetFavoriteSlugsAsync(_definition.Id, _user.UserId);
     }
 
     /// <summary>
@@ -227,10 +261,17 @@ else if (_dashboard is not null && _definition is not null)
         _environment = environment;
     }
 
-    private void OnExecuted(ProxyResponse? response)
+    private async Task OnExecuted(ProxyResponse? response)
     {
         _executing = response is null;
         _response = response;
+
+        // A finished call changes what "recently used" means, so the shortcut list is
+        // refreshed rather than waiting for the next page load.
+        if (response is not null)
+        {
+            await LoadUserStateAsync();
+        }
     }
 
     private string LoginLink()

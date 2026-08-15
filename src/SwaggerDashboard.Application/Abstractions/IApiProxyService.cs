@@ -70,6 +70,12 @@ public record ProxyResponse
     /// <summary>Set when the response was not text and was withheld from the preview.</summary>
     public bool IsBinary { get; init; }
 
+    /// <summary>One-shot token that fetches a binary response from the download endpoint.</summary>
+    public string? DownloadToken { get; init; }
+
+    /// <summary>Name the downloaded file is offered under.</summary>
+    public string? FileName { get; init; }
+
     public bool Truncated { get; init; }
 
     public string? ContentType { get; init; }

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using SwaggerDashboard.Application.Abstractions;
 using SwaggerDashboard.Infrastructure.Identity;
 
 namespace SwaggerDashboard.Web.Infrastructure;
@@ -62,6 +63,33 @@ public static class AccountEndpoints
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.Redirect("/login");
         });
+    }
+
+    /// <summary>
+    /// Serves a binary proxy response as a file download.
+    /// </summary>
+    /// <remarks>
+    /// A separate HTTP request rather than the Blazor circuit, because handing multiple
+    /// megabytes to the browser as a base64 JS interop argument is not workable. The token
+    /// is single use and bound to the session that produced it.
+    /// </remarks>
+    public static void MapDownloadEndpoint(this WebApplication app)
+    {
+        app.MapGet("/download/{token}", (
+            string token,
+            HttpContext context,
+            IResponseDownloadStore store) =>
+        {
+            var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var download = store.Take(token, userId);
+
+            if (download is null)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.File(download.Content, download.ContentType, download.FileName);
+        }).RequireAuthorization();
     }
 
     /// <summary>

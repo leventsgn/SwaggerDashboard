@@ -21,15 +21,6 @@ window.swaggerDashboard = {
         }
     },
 
-    downloadBytes: function (fileName, contentType, base64) {
-        const link = document.createElement('a');
-        link.href = 'data:' + contentType + ';base64,' + base64;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    },
-
     // HTML responses are shown inside a sandboxed frame with no script execution and no
     // same-origin access, so a hostile API response cannot reach the dashboard session.
     renderSandboxed: function (elementId, html) {

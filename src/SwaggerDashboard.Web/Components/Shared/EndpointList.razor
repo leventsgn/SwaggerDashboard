@@ -37,12 +37,35 @@
     <div class="sd-filters">
         <label class="sd-check"><input type="checkbox" checked="@_onlyDeprecated" @onchange="ToggleDeprecated" /> Deprecated</label>
         <label class="sd-check"><input type="checkbox" checked="@_onlyAuth" @onchange="ToggleAuth" /> Auth gerekli</label>
+        @if (Favorites.Count > 0)
+        {
+            <label class="sd-check"><input type="checkbox" checked="@_onlyFavorites" @onchange="ToggleFavorites" /> Favori</label>
+        }
+        @if (Recents.Count > 0)
+        {
+            <label class="sd-check"><input type="checkbox" checked="@_onlyRecent" @onchange="ToggleRecent" /> Son kullanılan</label>
+        }
     </div>
 
     <nav class="sd-endpoints">
         @if (Matches.Count == 0)
         {
             <p class="text-secondary small px-2">Eşleşen endpoint yok.</p>
+        }
+
+        @* Pinned and recent endpoints sit above the tag groups because they are what a
+           returning user reaches for first. *@
+        @foreach (var shortcut in Shortcuts)
+        {
+            <details open>
+                <summary>@shortcut.Key <span class="sd-count">@shortcut.Value.Count</span></summary>
+                <ul>
+                    @foreach (var operation in shortcut.Value)
+                    {
+                        <li>@RenderOperation(operation)</li>
+                    }
+                </ul>
+            </details>
         }
 
         @foreach (var group in Grouped)
@@ -52,18 +75,7 @@
                 <ul>
                     @foreach (var operation in group.Value)
                     {
-                        <li>
-                            <button type="button"
-                                    class="sd-endpoint @(operation.Slug == SelectedSlug ? "selected" : null)"
-                                    @onclick="() => OnSelect.InvokeAsync(operation.Slug)">
-                                <span class="sd-method @MethodClass(operation.Method)">@operation.Method</span>
-                                <span class="sd-path">@operation.Path</span>
-                                @if (operation.Deprecated)
-                                {
-                                    <span class="sd-deprecated" title="Deprecated">⚠</span>
-                                }
-                            </button>
-                        </li>
+                        <li>@RenderOperation(operation)</li>
                     }
                 </ul>
             </details>
@@ -71,7 +83,23 @@
     </nav>
 </aside>
 
+@* One row, shared by the shortcut groups and the tag groups. *@
 @code {
+    private RenderFragment RenderOperation(DashboardOperation operation) => @<button type="button"
+            class="sd-endpoint @(operation.Slug == SelectedSlug ? "selected" : null)"
+            @onclick="() => OnSelect.InvokeAsync(operation.Slug)">
+        <span class="sd-method @MethodClass(operation.Method)">@operation.Method</span>
+        <span class="sd-path">@operation.Path</span>
+        @if (Favorites.Contains(operation.Slug))
+        {
+            <span class="sd-fav" title="Favori">★</span>
+        }
+        @if (operation.Deprecated)
+        {
+            <span class="sd-deprecated" title="Deprecated">⚠</span>
+        }
+    </button>;
+
     [Parameter, EditorRequired]
     public DashboardDocument Dashboard { get; set; } = default!;
 
@@ -93,10 +121,18 @@
     [Parameter]
     public EventCallback<string> OnEnvironmentChange { get; set; }
 
+    [Parameter]
+    public IReadOnlyCollection<string> Favorites { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> Recents { get; set; } = [];
+
     private string _search = string.Empty;
     private readonly HashSet<string> _methodFilter = new(StringComparer.OrdinalIgnoreCase);
     private bool _onlyDeprecated;
     private bool _onlyAuth;
+    private bool _onlyFavorites;
+    private bool _onlyRecent;
 
     private IReadOnlyList<string> AvailableMethods =>
         Dashboard.Operations.Select(o => o.Method).Distinct(StringComparer.OrdinalIgnoreCase)
@@ -122,6 +158,16 @@
         }
 
         if (_onlyAuth && !operation.RequiresAuthentication)
+        {
+            return false;
+        }
+
+        if (_onlyFavorites && !Favorites.Contains(operation.Slug))
+        {
+            return false;
+        }
+
+        if (_onlyRecent && !Recents.Contains(operation.Slug))
         {
             return false;
         }
@@ -157,6 +203,40 @@
     private void ToggleDeprecated(ChangeEventArgs args) => _onlyDeprecated = args.Value is true;
 
     private void ToggleAuth(ChangeEventArgs args) => _onlyAuth = args.Value is true;
+
+    private void ToggleFavorites(ChangeEventArgs args) => _onlyFavorites = args.Value is true;
+
+    private void ToggleRecent(ChangeEventArgs args) => _onlyRecent = args.Value is true;
+
+    /// <summary>Favourite and recent groups, shown only when they have something in them.</summary>
+    private Dictionary<string, List<DashboardOperation>> Shortcuts
+    {
+        get
+        {
+            var result = new Dictionary<string, List<DashboardOperation>>();
+            var matches = Matches;
+
+            var favorites = matches.Where(o => Favorites.Contains(o.Slug)).ToList();
+            if (favorites.Count > 0)
+            {
+                result["★ Favoriler"] = favorites;
+            }
+
+            // Recents keep the order they were used in, not the document order.
+            var recent = Recents
+                .Select(slug => matches.FirstOrDefault(o => o.Slug == slug))
+                .Where(o => o is not null)
+                .Select(o => o!)
+                .ToList();
+
+            if (recent.Count > 0)
+            {
+                result["Son kullanılanlar"] = recent;
+            }
+
+            return result;
+        }
+    }
 
     /// <summary>
     /// Colour is paired with the method text everywhere, never used on its own, so the

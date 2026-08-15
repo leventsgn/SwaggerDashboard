@@ -667,3 +667,12 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+.sd-fav {
+    margin-left: auto;
+    color: #e0a800;
+}
+
+.sd-fav-toggle {
+    text-decoration: none;
+}

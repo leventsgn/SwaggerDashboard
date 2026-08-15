@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwaggerDashboard.Application.Abstractions;
 using SwaggerDashboard.Application.Configuration;
+using SwaggerDashboard.Application.Dashboards;
 using SwaggerDashboard.Application.Execution;
 using SwaggerDashboard.Infrastructure.Http;
 using SwaggerDashboard.Infrastructure.Persistence;
@@ -19,6 +20,7 @@ public class ApiProxyService : IApiProxyService
     private readonly SwaggerDashboardDbContext _db;
     private readonly IApiDefinitionService _definitionService;
     private readonly IApiCredentialStore _credentialStore;
+    private readonly IResponseDownloadStore _downloadStore;
     private readonly GuardedHttpSender _sender;
     private readonly IRequestLogService _logService;
     private readonly IOptionsMonitor<SwaggerDashboardOptions> _options;
@@ -28,6 +30,7 @@ public class ApiProxyService : IApiProxyService
         SwaggerDashboardDbContext db,
         IApiDefinitionService definitionService,
         IApiCredentialStore credentialStore,
+        IResponseDownloadStore downloadStore,
         GuardedHttpSender sender,
         IRequestLogService logService,
         IOptionsMonitor<SwaggerDashboardOptions> options,
@@ -36,6 +39,7 @@ public class ApiProxyService : IApiProxyService
         _db = db;
         _definitionService = definitionService;
         _credentialStore = credentialStore;
+        _downloadStore = downloadStore;
         _sender = sender;
         _logService = logService;
         _options = options;
@@ -121,6 +125,22 @@ public class ApiProxyService : IApiProxyService
         stopwatch.Stop();
         var completedAt = DateTimeOffset.UtcNow;
 
+        // A response the preview cannot show is only useful if the user can save it, so the
+        // bytes are parked for the download endpoint instead of being thrown away.
+        var isBinary = guarded.IsCompleted && guarded.Content is null && guarded.RawContent.Length > 0;
+        string? downloadToken = null;
+        string? fileName = null;
+
+        if (isBinary)
+        {
+            fileName = DeriveFileName(guarded, operation);
+            downloadToken = _downloadStore.Store(new ResponseDownload(
+                fileName,
+                guarded.ContentType ?? "application/octet-stream",
+                guarded.RawContent,
+                request.UserId));
+        }
+
         var response = new ProxyResponse
         {
             Success = guarded.IsCompleted && guarded.StatusCode is >= 200 and < 400,
@@ -132,7 +152,9 @@ public class ApiProxyService : IApiProxyService
             RequestBody = bodyText,
             ResponseHeaders = guarded.Headers,
             ResponseBody = guarded.Content,
-            IsBinary = guarded.IsCompleted && guarded.Content is null && guarded.RawContent.Length > 0,
+            IsBinary = isBinary,
+            DownloadToken = downloadToken,
+            FileName = fileName,
             Truncated = guarded.Truncated,
             ContentType = guarded.ContentType,
             ContentLength = guarded.TotalBytes,
@@ -158,6 +180,57 @@ public class ApiProxyService : IApiProxyService
 
         return response;
     }
+
+    /// <summary>
+    /// Works out what to call the downloaded file: the name the target API asked for, then
+    /// the last meaningful path segment, and finally the operation itself.
+    /// </summary>
+    private static string DeriveFileName(GuardedResponse guarded, DashboardOperation operation)
+    {
+        if (guarded.Headers.TryGetValue("Content-Disposition", out var disposition))
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(
+                disposition,
+                "filename\\*?=(?:UTF-8'')?\"?(?<name>[^\";]+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (match.Success)
+            {
+                var candidate = Uri.UnescapeDataString(match.Groups["name"].Value).Trim();
+
+                // The target API names the file, so the value has to be reduced to a bare
+                // name: a path or a traversal segment must not reach the browser.
+                candidate = Path.GetFileName(candidate);
+
+                if (!string.IsNullOrWhiteSpace(candidate) && candidate != "." && candidate != "..")
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        var segment = guarded.Uri.Segments.LastOrDefault()?.Trim('/');
+        if (!string.IsNullOrWhiteSpace(segment) && segment.Contains('.'))
+        {
+            return segment;
+        }
+
+        return operation.Slug + ExtensionFor(guarded.ContentType);
+    }
+
+    private static string ExtensionFor(string? contentType) => contentType?.Split(';')[0].Trim() switch
+    {
+        "application/pdf" => ".pdf",
+        "application/zip" => ".zip",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+        "text/csv" => ".csv",
+        "image/png" => ".png",
+        "image/jpeg" => ".jpg",
+        "image/gif" => ".gif",
+        "image/svg+xml" => ".svg",
+        _ => ".bin",
+    };
 
     /// <summary>
     /// Produces the outbound body. Multipart is assembled from the uploaded files and form

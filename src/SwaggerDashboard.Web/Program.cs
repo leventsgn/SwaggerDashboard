@@ -152,6 +152,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.MapAccountEndpoints();
+app.MapDownloadEndpoint();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymous();
 
 await app.InitializeDatabaseAsync();

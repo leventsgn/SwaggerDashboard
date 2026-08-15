@@ -192,6 +192,27 @@ alanları şemadaki tip ve format bilgisine göre üretilmiş değerlerle doldur
 Doldurma yalnızca bu butona basıldığında çalışır. Otomatik olsaydı kullanıcı ne gönderdiğini
 ayırt edemezdi.
 
+### Favoriler ve son kullanılanlar
+
+Endpoint ekranındaki yıldız butonu endpointi kullanıcıya özel favorilere ekler; sol menüde
+**★ Favoriler** ve **Son kullanılanlar** grupları listenin en üstünde çıkar ve aynı adla iki
+filtre eklenir.
+
+Son kullanılanlar ayrı bir tabloda tutulmaz, `ApiRequestLogs` üzerinden türetilir: her proxy
+çağrısı zaten kullanıcı ve endpoint bilgisiyle oraya yazılıyor, ikinci bir kayıt yalnızca
+senkron tutulacak fazladan bir şey olurdu. Bunun bedeli, listenin log saklama süresi kadar
+geriye gitmesidir.
+
+### İkili yanıtlar
+
+Önizlenemeyen bir yanıt (PDF, Excel, görsel) indirme bağlantısı olarak sunulur. Dosya adı
+hedefin `Content-Disposition` başlığından, yoksa yolun son parçasından, o da yoksa endpoint
+adı ve içerik tipinden türetilir.
+
+Baytlar Blazor devresinden değil, ayrı bir HTTP isteğiyle iner: megabaytlarca veriyi tek bir
+JS interop argümanı olarak base64 ile geçirmek çalışmaz. Bağlantı tek kullanımlıktır, 10
+dakika sonra düşer ve yalnızca isteği yapan oturuma açıktır.
+
 ### Swagger yenileme
 
 `/admin/apis` ekranında:

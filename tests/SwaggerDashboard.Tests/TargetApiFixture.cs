@@ -78,6 +78,12 @@ public sealed class TargetApiFixture : IAsyncDisposable
 
         app.MapGet("/v1/page", () => Results.Content("<h1>hello</h1><script>alert(1)</script>", "text/html"));
 
+        app.MapGet("/v1/report", (HttpContext context) =>
+        {
+            context.Response.Headers.ContentDisposition = "attachment; filename=\"rapor.pdf\"";
+            return Results.File(new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D, 1, 2, 3 }, "application/pdf");
+        });
+
         await app.StartAsync();
 
         var address = app.Urls.First();
@@ -162,6 +168,14 @@ public sealed class TargetApiFixture : IAsyncDisposable
                 {
                     operationId = "page",
                     responses = new Dictionary<string, object> { ["200"] = new { description = "html" } },
+                },
+            },
+            ["/report"] = new
+            {
+                get = new
+                {
+                    operationId = "report",
+                    responses = new Dictionary<string, object> { ["200"] = new { description = "pdf" } },
                 },
             },
         },

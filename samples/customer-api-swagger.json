@@ -6,40 +6,70 @@
     "version": "1.4.0"
   },
   "servers": [
-    { "url": "https://api.company.com/v1" }
+    {
+      "url": "https://api.company.com/v1"
+    }
   ],
   "tags": [
-    { "name": "Customers", "description": "Müşteri işlemleri" },
-    { "name": "Files", "description": "Dosya yükleme" }
+    {
+      "name": "Customers",
+      "description": "Müşteri işlemleri"
+    },
+    {
+      "name": "Files",
+      "description": "Dosya yükleme"
+    }
   ],
   "paths": {
     "/customers": {
       "get": {
-        "tags": [ "Customers" ],
+        "tags": [
+          "Customers"
+        ],
         "operationId": "listCustomers",
         "summary": "Müşterileri listeler",
         "parameters": [
           {
             "name": "page",
             "in": "query",
-            "schema": { "type": "integer", "format": "int32", "default": 1, "minimum": 1 }
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1,
+              "minimum": 1
+            }
           },
           {
             "name": "status",
             "in": "query",
-            "schema": { "type": "string", "enum": [ "active", "passive", "blocked" ] }
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "passive",
+                "blocked"
+              ]
+            }
           },
           {
             "name": "tags",
             "in": "query",
             "style": "form",
             "explode": true,
-            "schema": { "type": "array", "items": { "type": "string" } }
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           },
           {
             "name": "X-Correlation-Id",
             "in": "header",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -49,7 +79,9 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": { "$ref": "#/components/schemas/Customer" }
+                  "items": {
+                    "$ref": "#/components/schemas/Customer"
+                  }
                 }
               }
             }
@@ -57,14 +89,18 @@
         }
       },
       "post": {
-        "tags": [ "Customers" ],
+        "tags": [
+          "Customers"
+        ],
         "operationId": "createCustomer",
         "summary": "Yeni müşteri oluşturur",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateCustomerRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/CreateCustomerRequest"
+              }
             }
           }
         },
@@ -73,13 +109,21 @@
             "description": "Oluşturuldu",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Customer" }
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
               }
             }
           },
-          "400": { "description": "Geçersiz istek" }
+          "400": {
+            "description": "Geçersiz istek"
+          }
         },
-        "security": [ { "bearerAuth": [] } ]
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/customers/{id}": {
@@ -88,63 +132,111 @@
           "name": "id",
           "in": "path",
           "required": true,
-          "schema": { "type": "string", "format": "uuid" }
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
         }
       ],
       "get": {
-        "tags": [ "Customers" ],
+        "tags": [
+          "Customers"
+        ],
         "operationId": "getCustomerById",
         "summary": "Tek bir müşteriyi getirir",
         "responses": {
           "200": {
             "description": "Başarılı",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Customer" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
             }
           },
-          "404": { "description": "Bulunamadı" }
+          "404": {
+            "description": "Bulunamadı"
+          }
         },
-        "security": [ { "bearerAuth": [] } ]
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       },
       "put": {
-        "tags": [ "Customers" ],
+        "tags": [
+          "Customers"
+        ],
         "operationId": "replaceCustomer",
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CreateCustomerRequest" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCustomerRequest"
+              }
+            }
           }
         },
-        "responses": { "204": { "description": "Güncellendi" } }
+        "responses": {
+          "204": {
+            "description": "Güncellendi"
+          }
+        }
       },
       "patch": {
-        "tags": [ "Customers" ],
+        "tags": [
+          "Customers"
+        ],
         "operationId": "patchCustomer",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": { "type": "string" }
+                "additionalProperties": {
+                  "type": "string"
+                }
               }
             }
           }
         },
-        "responses": { "204": { "description": "Güncellendi" } }
+        "responses": {
+          "204": {
+            "description": "Güncellendi"
+          }
+        }
       },
       "delete": {
-        "tags": [ "Customers" ],
+        "tags": [
+          "Customers"
+        ],
         "operationId": "deleteCustomer",
         "deprecated": true,
-        "responses": { "204": { "description": "Silindi" } }
+        "responses": {
+          "204": {
+            "description": "Silindi"
+          }
+        }
       }
     },
     "/customers/{id}/documents": {
       "post": {
-        "tags": [ "Files" ],
+        "tags": [
+          "Files"
+        ],
         "operationId": "uploadCustomerDocument",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -152,28 +244,49 @@
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "required": [ "file" ],
+                "required": [
+                  "file"
+                ],
                 "properties": {
-                  "file": { "type": "string", "format": "binary" },
-                  "documentType": { "type": "string", "enum": [ "identity", "contract" ] }
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "documentType": {
+                    "type": "string",
+                    "enum": [
+                      "identity",
+                      "contract"
+                    ]
+                  }
                 }
               }
             }
           }
         },
-        "responses": { "201": { "description": "Yüklendi" } }
+        "responses": {
+          "201": {
+            "description": "Yüklendi"
+          }
+        }
       }
     },
     "/nodes": {
       "get": {
-        "tags": [ "Customers" ],
+        "tags": [
+          "Customers"
+        ],
         "operationId": "getNodeTree",
         "summary": "Özyinelemeli şema örneği",
         "responses": {
           "200": {
             "description": "Başarılı",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Node" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Node"
+                }
+              }
             }
           }
         }
@@ -181,7 +294,9 @@
     },
     "/payments": {
       "post": {
-        "tags": [ "Customers" ],
+        "tags": [
+          "Customers"
+        ],
         "operationId": "createPayment",
         "summary": "oneOf gövde örneği",
         "requestBody": {
@@ -190,15 +305,47 @@
             "application/json": {
               "schema": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/CardPayment" },
-                  { "$ref": "#/components/schemas/TransferPayment" }
+                  {
+                    "$ref": "#/components/schemas/CardPayment"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TransferPayment"
+                  }
                 ],
-                "discriminator": { "propertyName": "kind" }
+                "discriminator": {
+                  "propertyName": "kind"
+                }
               }
             }
           }
         },
-        "responses": { "202": { "description": "Kabul edildi" } }
+        "responses": {
+          "202": {
+            "description": "Kabul edildi"
+          }
+        }
+      }
+    },
+    "/customers/export": {
+      "get": {
+        "tags": [
+          "Customers"
+        ],
+        "operationId": "exportCustomers",
+        "summary": "Müşteri raporunu PDF olarak indirir",
+        "responses": {
+          "200": {
+            "description": "PDF",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -218,26 +365,62 @@
     "schemas": {
       "Customer": {
         "type": "object",
-        "required": [ "id", "name" ],
+        "required": [
+          "id",
+          "name"
+        ],
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string", "maxLength": 200 },
-          "email": { "type": "string", "format": "email" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "isActive": { "type": "boolean", "default": true },
-          "balance": { "type": "number", "format": "double" },
-          "address": { "$ref": "#/components/schemas/Address" },
-          "tags": { "type": "array", "items": { "type": "string" } }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          },
+          "balance": {
+            "type": "number",
+            "format": "double"
+          },
+          "address": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "CreateCustomerRequest": {
         "allOf": [
-          { "$ref": "#/components/schemas/CustomerBase" },
+          {
+            "$ref": "#/components/schemas/CustomerBase"
+          },
           {
             "type": "object",
-            "required": [ "name" ],
+            "required": [
+              "name"
+            ],
             "properties": {
-              "password": { "type": "string", "format": "password", "minLength": 8 }
+              "password": {
+                "type": "string",
+                "format": "password",
+                "minLength": 8
+              }
             }
           }
         ]
@@ -245,45 +428,87 @@
       "CustomerBase": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "email": { "type": "string", "format": "email" },
-          "address": { "$ref": "#/components/schemas/Address" }
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "address": {
+            "$ref": "#/components/schemas/Address"
+          }
         }
       },
       "Address": {
         "type": "object",
         "properties": {
-          "line1": { "type": "string" },
-          "city": { "type": "string" },
-          "postalCode": { "type": "string", "pattern": "^[0-9]{5}$" }
+          "line1": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "postalCode": {
+            "type": "string",
+            "pattern": "^[0-9]{5}$"
+          }
         }
       },
       "Node": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
+          "name": {
+            "type": "string"
+          },
           "children": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/Node" }
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
           }
         }
       },
       "CardPayment": {
         "type": "object",
-        "required": [ "kind", "cardNumber" ],
+        "required": [
+          "kind",
+          "cardNumber"
+        ],
         "properties": {
-          "kind": { "type": "string", "enum": [ "card" ] },
-          "cardNumber": { "type": "string" },
-          "amount": { "type": "number" }
+          "kind": {
+            "type": "string",
+            "enum": [
+              "card"
+            ]
+          },
+          "cardNumber": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
         }
       },
       "TransferPayment": {
         "type": "object",
-        "required": [ "kind", "iban" ],
+        "required": [
+          "kind",
+          "iban"
+        ],
         "properties": {
-          "kind": { "type": "string", "enum": [ "transfer" ] },
-          "iban": { "type": "string" },
-          "amount": { "type": "number" }
+          "kind": {
+            "type": "string",
+            "enum": [
+              "transfer"
+            ]
+          },
+          "iban": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
         }
       }
     }

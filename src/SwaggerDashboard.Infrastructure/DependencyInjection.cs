@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddSingleton<IHashService, HashService>();
         services.AddSingleton<IDashboardCache, MemoryDashboardCache>();
         services.AddSingleton<IApiCredentialStore, MemoryApiCredentialStore>();
+        services.AddSingleton<IResponseDownloadStore, MemoryResponseDownloadStore>();
         services.AddSingleton<IDnsResolver, SystemDnsResolver>();
         services.AddSingleton<IOutboundUrlValidator, OutboundUrlValidator>();
         services.AddSingleton<ProvisioningRateLimiter>();
@@ -46,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<ISwaggerRefreshService, SwaggerRefreshService>();
         services.AddScoped<IApiProxyService, ApiProxyService>();
         services.AddScoped<IRequestLogService, RequestLogService>();
+        services.AddScoped<IUserEndpointService, UserEndpointService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<GuardedHttpSender>();
 

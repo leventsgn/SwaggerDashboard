@@ -85,7 +85,7 @@ public class EndToEndTests : IAsyncLifetime
         Assert.True(result.IsSuccess, result.Error);
         Assert.True(result.WasProvisioned);
         Assert.Equal("Item API", result.Dashboard!.Title);
-        Assert.Equal(4, result.Dashboard.Operations.Count);
+        Assert.Equal(5, result.Dashboard.Operations.Count);
 
         // The identity is the JSON document, not the HTML page that was pasted.
         Assert.EndsWith("/swagger/v1/swagger.json", result.Definition!.SwaggerUrlNormalized);
@@ -232,6 +232,78 @@ public class EndToEndTests : IAsyncLifetime
         Assert.Contains("text/html", response.ContentType);
         Assert.Contains("<h1>hello</h1>", response.ResponseBody);
         Assert.False(response.IsBinary);
+    }
+
+    [Fact]
+    public async Task A_binary_response_is_offered_as_a_download_with_the_name_the_target_chose()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+        var downloads = scope.ServiceProvider.GetRequiredService<IResponseDownloadStore>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "report");
+
+        var response = await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition!.Id,
+            OperationSlug = operation.Slug,
+            UserId = "1",
+        });
+
+        Assert.True(response.IsBinary);
+        Assert.Null(response.ResponseBody);
+        Assert.Equal("rapor.pdf", response.FileName);
+        Assert.NotNull(response.DownloadToken);
+
+        // Another session must not be able to redeem the token.
+        Assert.Null(downloads.Take(response.DownloadToken!, "someone-else"));
+
+        var download = downloads.Take(response.DownloadToken!, "1");
+        Assert.NotNull(download);
+        Assert.Equal("application/pdf", download!.ContentType);
+        Assert.Equal(new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D, 1, 2, 3 }, download.Content);
+
+        // The token is single use.
+        Assert.Null(downloads.Take(response.DownloadToken!, "1"));
+    }
+
+    [Fact]
+    public async Task Favourites_and_recents_follow_the_user()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+        var userEndpoints = scope.ServiceProvider.GetRequiredService<IUserEndpointService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var apiId = resolved.Definition!.Id;
+        var get = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+        var post = resolved.Dashboard.Operations.Single(o => o.OperationId == "createItem");
+
+        Assert.True(await userEndpoints.ToggleFavoriteAsync(apiId, get.Slug, "1"));
+        Assert.Contains(get.Slug, await userEndpoints.GetFavoriteSlugsAsync(apiId, "1"));
+
+        // Favourites are per user, not per API.
+        Assert.Empty(await userEndpoints.GetFavoriteSlugsAsync(apiId, "2"));
+
+        Assert.False(await userEndpoints.ToggleFavoriteAsync(apiId, get.Slug, "1"));
+        Assert.Empty(await userEndpoints.GetFavoriteSlugsAsync(apiId, "1"));
+
+        await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = apiId, OperationSlug = get.Slug, PathParameters = { ["id"] = "1" }, UserId = "1",
+        });
+        await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = apiId, OperationSlug = post.Slug, Body = """{"name":"x"}""", UserId = "1",
+        });
+
+        // Newest first, and each endpoint appears once however often it was called.
+        var recents = await userEndpoints.GetRecentSlugsAsync(apiId, "1", 8);
+        Assert.Equal(new[] { post.Slug, get.Slug }, recents);
+        Assert.Empty(await userEndpoints.GetRecentSlugsAsync(apiId, "2", 8));
     }
 
     [Fact]

@@ -47,9 +47,21 @@
                 case "Preview":
                     @if (Response.IsBinary)
                     {
-                        <p class="text-secondary p-2">
-                            İkili içerik (@Response.ContentType). Önizleme gösterilmiyor.
-                        </p>
+                        <div class="p-2">
+                            <p class="text-secondary">
+                                İkili içerik (@Response.ContentType). Önizleme gösterilmiyor.
+                            </p>
+                            @if (Response.DownloadToken is not null)
+                            {
+                                <a class="btn btn-sm btn-outline-primary"
+                                   href="/download/@Response.DownloadToken" download="@Response.FileName">
+                                    @Response.FileName indir (@FormatSize(Response.ContentLength))
+                                </a>
+                                <p class="small text-secondary mt-2 mb-0">
+                                    Bağlantı tek kullanımlıktır ve 10 dakika sonra düşer.
+                                </p>
+                            }
+                        </div>
                     }
                     else if (IsHtml)
                     {

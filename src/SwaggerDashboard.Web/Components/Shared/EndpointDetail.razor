@@ -43,6 +43,14 @@
             <button type="button" class="btn btn-sm btn-link p-0" @onclick="CopyShareLink">
                 @(_shareCopied ? "Bağlantı kopyalandı" : "Paylaşılabilir bağlantı")
             </button>
+            @if (UserId is not null)
+            {
+                <button type="button" class="btn btn-sm btn-link p-0 sd-fav-toggle"
+                        @onclick="() => OnToggleFavorite.InvokeAsync(Operation.Slug)"
+                        title="@(IsFavorite ? "Favorilerden çıkar" : "Favorilere ekle")">
+                    @(IsFavorite ? "★ Favoride" : "☆ Favorilere ekle")
+                </button>
+            }
         </div>
     </header>
 
@@ -228,6 +236,12 @@
 
     [Parameter]
     public EventCallback<ProxyResponse?> OnExecuted { get; set; }
+
+    [Parameter]
+    public bool IsFavorite { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnToggleFavorite { get; set; }
 
     private readonly Dictionary<string, FormNode> _parameterNodes = new(StringComparer.Ordinal);
     private readonly List<ProxyFile> _files = [];
