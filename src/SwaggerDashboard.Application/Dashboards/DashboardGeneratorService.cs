@@ -110,6 +110,10 @@ public class DashboardGeneratorService : IDashboardGeneratorService
 
         foreach (var (key, scheme) in document.Components.SecuritySchemes)
         {
+            // Only the client credentials flow is read: it is the one an unattended test tool
+            // can complete on its own. The others need a browser redirect and a human at it.
+            var clientCredentials = scheme.Flows?.ClientCredentials;
+
             dashboard.SecuritySchemes.Add(new DashboardSecurityScheme
             {
                 Key = key,
@@ -117,6 +121,8 @@ public class DashboardGeneratorService : IDashboardGeneratorService
                 Scheme = scheme.Scheme,
                 In = scheme.Type == SecuritySchemeType.ApiKey ? scheme.In.ToString().ToLowerInvariant() : null,
                 ParameterName = scheme.Type == SecuritySchemeType.ApiKey ? scheme.Name : null,
+                TokenUrl = clientCredentials?.TokenUrl?.ToString(),
+                Scopes = clientCredentials?.Scopes?.Keys.ToList() ?? [],
                 Description = scheme.Description,
             });
         }

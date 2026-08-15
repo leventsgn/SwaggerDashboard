@@ -151,6 +151,7 @@
                     <option value="@ApiAuthKind.Bearer">Bearer token</option>
                     <option value="@ApiAuthKind.Basic">Basic</option>
                     <option value="@ApiAuthKind.ApiKey">API Key</option>
+                    <option value="@ApiAuthKind.OAuth2ClientCredentials">OAuth2 (client credentials)</option>
                 </select>
 
                 @if (_authKind == ApiAuthKind.Basic)
@@ -170,15 +171,36 @@
                     </select>
                 }
 
+                @if (_authKind == ApiAuthKind.OAuth2ClientCredentials)
+                {
+                    <input class="form-control form-control-sm" placeholder="Token adresi"
+                           value="@_authTokenUrl" @onchange="e => _authTokenUrl = e.Value?.ToString() ?? string.Empty" />
+                    <input class="form-control form-control-sm" placeholder="Client ID"
+                           value="@_authUserName" @onchange="e => _authUserName = e.Value?.ToString() ?? string.Empty" />
+                    <input class="form-control form-control-sm" placeholder="Scope (isteğe bağlı)"
+                           value="@_authScope" @onchange="e => _authScope = e.Value?.ToString() ?? string.Empty" />
+                }
+
                 @if (_authKind != ApiAuthKind.None)
                 {
-                    <input class="form-control form-control-sm" type="password" placeholder="Değer"
+                    <input class="form-control form-control-sm" type="password"
+                           placeholder="@(_authKind == ApiAuthKind.OAuth2ClientCredentials ? "Client secret" : "Değer")"
                            value="@_authSecret" @onchange="e => _authSecret = e.Value?.ToString() ?? string.Empty" />
                     <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="SaveCredential">
                         @(_credentialSaved ? "Kaydedildi" : "Oturuma kaydet")
                     </button>
                 }
             </div>
+            @if (_authKind == ApiAuthKind.OAuth2ClientCredentials)
+            {
+                <p class="sd-field-help">
+                    Token'ı platform kendisi alır (grant_type=client_credentials) ve isteğe bearer
+                    olarak ekler; süresi dolana kadar bellekte tutulur. Token adresi de diğer
+                    hedefler gibi whitelist ve SSRF kontrolünden geçer. Tarayıcıya yalnızca
+                    yanıt döner, client secret hiçbir zaman gönderilmez.
+                </p>
+            }
+
             <p class="sd-field-help">
                 Girilen değer yalnızca sunucu belleğinde, oturumunuza bağlı olarak tutulur; veritabanına yazılmaz.
                 @if (Operation.SecuritySchemeKeys.Count > 0)
@@ -371,6 +393,8 @@
     private string _authUserName = string.Empty;
     private string _authParameterName = "X-Api-Key";
     private string _authParameterIn = "header";
+    private string _authTokenUrl = string.Empty;
+    private string _authScope = string.Empty;
 
     private bool IsFileUpload =>
         _contentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase);
@@ -787,6 +811,25 @@
                 _authParameterIn = scheme.In ?? _authParameterIn;
             }
         }
+
+        // The document usually names the token endpoint and the scopes; offering them saves
+        // the user a trip to the swagger file. They stay editable — the document can be wrong
+        // or out of date, and the value is validated before anything is sent to it.
+        if (_authKind == ApiAuthKind.OAuth2ClientCredentials)
+        {
+            var scheme = Dashboard.SecuritySchemes
+                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.TokenUrl));
+
+            if (scheme is not null)
+            {
+                _authTokenUrl = string.IsNullOrWhiteSpace(_authTokenUrl) ? scheme.TokenUrl! : _authTokenUrl;
+
+                if (string.IsNullOrWhiteSpace(_authScope) && scheme.Scopes.Count > 0)
+                {
+                    _authScope = string.Join(' ', scheme.Scopes);
+                }
+            }
+        }
     }
 
     private void LoadStoredCredential()
@@ -806,6 +849,8 @@
         _authUserName = stored.UserName ?? string.Empty;
         _authParameterName = stored.ParameterName ?? _authParameterName;
         _authParameterIn = stored.ParameterIn ?? _authParameterIn;
+        _authTokenUrl = stored.TokenUrl ?? string.Empty;
+        _authScope = stored.Scope ?? string.Empty;
         _credentialSaved = true;
 
         // The secret itself is not read back into the form; it stays server side.
@@ -832,6 +877,8 @@
             UserName = _authUserName,
             ParameterName = _authParameterName,
             ParameterIn = _authParameterIn,
+            TokenUrl = _authTokenUrl,
+            Scope = _authScope,
         });
 
         _authSecret = string.Empty;

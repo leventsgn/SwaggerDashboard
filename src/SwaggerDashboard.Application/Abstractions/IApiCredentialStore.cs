@@ -22,9 +22,13 @@ public record ApiCredential
 {
     public ApiAuthKind Kind { get; init; } = ApiAuthKind.None;
 
-    /// <summary>Bearer token, basic password or API key value depending on <see cref="Kind"/>.</summary>
+    /// <summary>
+    /// Bearer token, basic password, API key value, or OAuth2 client secret depending on
+    /// <see cref="Kind"/>.
+    /// </summary>
     public string? Secret { get; init; }
 
+    /// <summary>Basic user name, or the OAuth2 client id.</summary>
     public string? UserName { get; init; }
 
     /// <summary>Header or query parameter name for API key authentication.</summary>
@@ -32,6 +36,12 @@ public record ApiCredential
 
     /// <summary>header or query.</summary>
     public string? ParameterIn { get; init; }
+
+    /// <summary>OAuth2 token endpoint for the client credentials flow.</summary>
+    public string? TokenUrl { get; init; }
+
+    /// <summary>Optional space separated scopes requested with the token.</summary>
+    public string? Scope { get; init; }
 }
 
 public enum ApiAuthKind
@@ -40,4 +50,15 @@ public enum ApiAuthKind
     Bearer = 1,
     Basic = 2,
     ApiKey = 3,
+
+    /// <summary>
+    /// OAuth2 client credentials: the platform fetches a token itself and sends it as a
+    /// bearer.
+    /// </summary>
+    /// <remarks>
+    /// The only OAuth2 flow offered. The others end at a browser redirect and a consent
+    /// screen, which a server side test tool cannot complete on the user's behalf without
+    /// becoming an identity client in its own right.
+    /// </remarks>
+    OAuth2ClientCredentials = 4,
 }

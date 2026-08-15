@@ -9,7 +9,7 @@ namespace SwaggerDashboard.Application.Dashboards;
 public class DashboardDocument
 {
     /// <summary>Increment when the generator output shape changes.</summary>
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -59,6 +59,19 @@ public class DashboardSecurityScheme
 
     /// <summary>For apiKey schemes: the header or query parameter name.</summary>
     public string? ParameterName { get; set; }
+
+    /// <summary>
+    /// For oauth2 client credentials: the token endpoint declared by the document.
+    /// </summary>
+    /// <remarks>
+    /// Carried so the auth form can offer it instead of asking the user to find it. It is a
+    /// suggestion, not a decision: the value is still shown, editable, and validated against
+    /// the outbound policy before anything is sent to it.
+    /// </remarks>
+    public string? TokenUrl { get; set; }
+
+    /// <summary>Scopes the document declares for the client credentials flow.</summary>
+    public List<string> Scopes { get; set; } = [];
 
     public string? Description { get; set; }
 }

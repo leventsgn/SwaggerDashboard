@@ -391,6 +391,26 @@ Hedef API'nin token/parola/API key değerleri **yalnızca sunucu belleğinde**, 
 başına, kayan bir süreyle tutulur. Veritabanına yazılmaz ve tarayıcıya gönderilmez. Bunlar
 dashboard kullanıcısının kimliğinden ayrıdır.
 
+Desteklenen yöntemler: Bearer token, Basic, API Key ve **OAuth2 client credentials**.
+
+OAuth2'de token'ı platform kendisi alır (`grant_type=client_credentials`) ve isteğe bearer
+olarak ekler:
+
+- **Yalnızca client credentials akışı desteklenir.** Diğer akışlar tarayıcı yönlendirmesi ve
+  onay ekranıyla biter; sunucu tarafında çalışan bir test aracı bunu kullanıcı adına
+  tamamlayamaz.
+- Token adresi ve scope, dokümandaki `clientCredentials` tanımından okunup forma önerilir ama
+  düzenlenebilir kalır; doküman eski veya hatalı olabilir.
+- Client ID ve secret **Authorization başlığında** gönderilir (RFC 6749 §2.3.1); gövdeye de
+  koymak secret'ı bir kez daha tel üzerine çıkarmaktan başka işe yaramaz.
+- Token adresi de diğer hedefler gibi whitelist ve SSRF kontrolünden geçer. Bu olmadan
+  whitelist'li bir platform, client secret'ını rastgele bir sunucuya POST etmeye ikna
+  edilebilirdi.
+- Token, süresi dolmadan 30 saniye öncesine kadar bellekte tutulur. Cache anahtarı kullanıcı,
+  token adresi, client ID, scope ve **secret'ın özetini** içerir: secret değiştiğinde eskisiyle
+  alınmış token'ın kullanılması, düzeltilmiş bilgilerin denenmeden "çalışıyor" görünmesi
+  demek olurdu.
+
 ### Roller
 
 | Rol | Yetki |

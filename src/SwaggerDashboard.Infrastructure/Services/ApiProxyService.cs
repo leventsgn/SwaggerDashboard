@@ -20,6 +20,7 @@ public class ApiProxyService : IApiProxyService
     private readonly SwaggerDashboardDbContext _db;
     private readonly IApiDefinitionService _definitionService;
     private readonly IApiCredentialStore _credentialStore;
+    private readonly IOAuthTokenService _tokenService;
     private readonly IResponseDownloadStore _downloadStore;
     private readonly GuardedHttpSender _sender;
     private readonly IRequestLogService _logService;
@@ -30,6 +31,7 @@ public class ApiProxyService : IApiProxyService
         SwaggerDashboardDbContext db,
         IApiDefinitionService definitionService,
         IApiCredentialStore credentialStore,
+        IOAuthTokenService tokenService,
         IResponseDownloadStore downloadStore,
         GuardedHttpSender sender,
         IRequestLogService logService,
@@ -39,6 +41,7 @@ public class ApiProxyService : IApiProxyService
         _db = db;
         _definitionService = definitionService;
         _credentialStore = credentialStore;
+        _tokenService = tokenService;
         _downloadStore = downloadStore;
         _sender = sender;
         _logService = logService;
@@ -88,6 +91,22 @@ public class ApiProxyService : IApiProxyService
         var credential = request.UserId is null
             ? null
             : _credentialStore.Get(request.UserId, definition.Id);
+
+        // A client credentials grant is exchanged for a bearer token before the request is
+        // built, so the builder stays a pure function of its inputs and knows only one way to
+        // put a token on a request.
+        if (credential is { Kind: ApiAuthKind.OAuth2ClientCredentials })
+        {
+            var token = await _tokenService.GetTokenAsync(
+                $"{request.UserId}:{definition.Id}", credential, cancellationToken);
+
+            if (!token.Success)
+            {
+                return ProxyResponse.Failure(token.Error!, string.Empty, operation.Method);
+            }
+
+            credential = new ApiCredential { Kind = ApiAuthKind.Bearer, Secret = token.AccessToken };
+        }
 
         var built = TargetRequestBuilder.Build(baseUrl, operation, request, credential);
         if (!built.Success || built.Uri is null)
