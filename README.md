@@ -283,6 +283,18 @@ değeriyle listelenir. Durum kodu değiştiyse ayrıca söylenir.
 - JSON olmayan gövdelerde alan bazlı karşılaştırma yapılmaz ve bu söylenir. Fark listesi
   300 satırla sınırlıdır; aşıldığında bu da yazılır.
 
+### Dar ekran düzeni
+
+900 pikselin altında üç panel yan yana sığmaz. Bu genişlikte çalışma alanı sekmeli hâle
+gelir: **Endpointler / İstek / Yanıt**. Endpoint seçmek İstek sekmesine, çalıştırmak Yanıt
+sekmesine geçirir — telefonda bir çağrının sonucunu görmek için listeyi ve formu aşağı
+kaydırmak gerekmez. Toplu test açıkken Yanıt sekmesi görünmez, çünkü o düzende yanıt paneli
+zaten yerini sonuç tablosuna bırakır.
+
+Hangi düzenin geçerli olduğu CSS'e bırakılmıştır (`data-pane` + medya sorgusu); bu bir görünüm
+alanı sorusudur ve JavaScript'in pencereyi ölçmesini gerektirmez. Geniş ekranda üç panel
+eskisi gibi yan yanadır.
+
 ### Favoriler ve son kullanılanlar
 
 Endpoint ekranındaki yıldız butonu endpointi kullanıcıya özel favorilere ekler; sol menüde
@@ -433,6 +445,13 @@ eşlemesi ayrı anahtarlarla tutulur, böylece her ziyarette veritabanına gidil
 sonra veritabanı okunur. Swagger güncelleme, yeniden oluşturma, pasifleştirme, düzenleme ve
 silme işlemlerinde ilgili API'nin tüm girdileri temizlenir. İlk sürüm `IMemoryCache`
 kullanır; `IDashboardCache` arayüzü Redis'e geçişi çağıranları değiştirmeden mümkün kılar.
+
+`/admin/apis` ekranındaki **Cache temizle** butonu bellekteki tüm dashboard ve route
+kayıtlarını atar ve kaç kayıt atıldığını söyler — sayısı olmayan bir "temizlendi" mesajı, hiç
+çalışmayan bir butondan ayırt edilemez. Hedefli temizleme zaten yenileme akışlarında
+yapılıyor; bu buton, uygulamanın bilmediği bir değişiklikten sonra bir sonraki isteğin
+veritabanından yeniden okumasını istediğiniz durum için var. Saklanan hiçbir veri silinmediği
+için onay sormaz.
 
 ## Testler
 

@@ -5,15 +5,22 @@
 @inject IApiDefinitionService DefinitionService
 @inject ISwaggerRefreshService RefreshService
 @inject CurrentUserAccessor CurrentUserAccessor
+@inject IDashboardCache Cache
 
 <PageTitle>API yönetimi - Swagger Dashboard</PageTitle>
 
 <div class="sd-page sd-page-wide">
     <div class="sd-page-head">
         <h1>API yönetimi</h1>
-        <button class="btn btn-primary" @onclick="() => _showNew = !_showNew">
-            @(_showNew ? "Vazgeç" : "Yeni API")
-        </button>
+        <div class="sd-page-actions">
+            <button class="btn btn-outline-secondary" disabled="@_busy" @onclick="ClearCacheAsync"
+                    title="Bellekteki dashboard ve route kayıtlarını atar. Veriler silinmez; sonraki açılışta veritabanından yeniden okunur.">
+                Cache temizle
+            </button>
+            <button class="btn btn-primary" @onclick="() => _showNew = !_showNew">
+                @(_showNew ? "Vazgeç" : "Yeni API")
+            </button>
+        </div>
     </div>
 
     @if (_message is not null)
@@ -197,6 +204,27 @@
         {
             _busy = false;
         }
+    }
+
+    /// <summary>
+    /// Drops the in-memory dashboards and route mappings.
+    /// </summary>
+    /// <remarks>
+    /// Refreshing an API already invalidates its own entries, so this exists for the case the
+    /// targeted paths cannot cover: something changed outside the application's knowledge and
+    /// the operator wants the next request to rebuild from the database. Nothing stored is
+    /// lost, which is why it needs no confirmation.
+    /// </remarks>
+    private Task ClearCacheAsync()
+    {
+        var cleared = Cache.InvalidateAll();
+
+        _message = cleared == 0
+            ? "Cache zaten boştu."
+            : $"Cache temizlendi, {cleared} kayıt atıldı. Sonraki açılışta veritabanından yeniden okunacak.";
+        _messageIsError = false;
+
+        return Task.CompletedTask;
     }
 
     private async Task RefreshAsync(int id)

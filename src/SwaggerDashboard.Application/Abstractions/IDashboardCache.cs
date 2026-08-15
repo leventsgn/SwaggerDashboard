@@ -20,4 +20,13 @@ public interface IDashboardCache
 
     /// <summary>Drops every entry belonging to an API, including its route mappings.</summary>
     void InvalidateApi(int apiDefinitionId);
+
+    /// <summary>
+    /// Drops every cached dashboard and route mapping, and reports how many entries went.
+    /// </summary>
+    /// <remarks>
+    /// The count is returned so the screen offering this can say what happened. "Cache
+    /// cleared" with no number is indistinguishable from a button that does nothing.
+    /// </remarks>
+    int InvalidateAll();
 }

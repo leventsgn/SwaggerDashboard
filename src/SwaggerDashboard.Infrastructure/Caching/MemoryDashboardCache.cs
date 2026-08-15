@@ -78,6 +78,28 @@ public class MemoryDashboardCache : IDashboardCache
         }
     }
 
+    public int InvalidateAll()
+    {
+        var cleared = 0;
+
+        foreach (var apiDefinitionId in _keysByApi.Keys)
+        {
+            if (!_keysByApi.TryRemove(apiDefinitionId, out var keys))
+            {
+                continue;
+            }
+
+            foreach (var key in keys.Keys)
+            {
+                _cache.Remove(key);
+                _apiByRouteKey.TryRemove(key, out _);
+                cleared++;
+            }
+        }
+
+        return cleared;
+    }
+
     private void Track(int apiDefinitionId, string key)
     {
         var keys = _keysByApi.GetOrAdd(apiDefinitionId, _ => new ConcurrentDictionary<string, byte>(StringComparer.Ordinal));

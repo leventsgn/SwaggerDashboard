@@ -50,7 +50,23 @@ else if (_dashboard is not null && _definition is not null)
         </div>
     }
 
-    <div class="sd-workbench @(_sweepOpen ? "sd-workbench-wide" : null)">
+    @* data-pane drives the narrow screen layout. The panes are tabs there and columns on a
+       wide screen, and which one applies is a question about the viewport, so CSS answers it
+       rather than JavaScript measuring the window. *@
+    <div class="sd-workbench @(_sweepOpen ? "sd-workbench-wide" : null)" data-pane="@_pane">
+        <nav class="sd-pane-tabs">
+            <button type="button" class="@(_pane == "list" ? "active" : null)"
+                    @onclick='() => _pane = "list"'>Endpointler</button>
+            <button type="button" class="@(_pane == "detail" ? "active" : null)"
+                    @onclick='() => _pane = "detail"'>@(_sweepOpen ? "Toplu test" : "İstek")</button>
+            @* The bulk run replaces the response panel, so there is no third pane to offer. *@
+            @if (!_sweepOpen)
+            {
+                <button type="button" class="@(_pane == "response" ? "active" : null)"
+                        @onclick='() => _pane = "response"'>Yanıt</button>
+            }
+        </nav>
+
         <EndpointList Dashboard="_dashboard"
                       Definition="_definition"
                       SelectedSlug="@_selectedSlug"
@@ -143,6 +159,12 @@ else if (_dashboard is not null && _definition is not null)
     private bool _executing;
     private bool _wasProvisioned;
     private bool _sweepOpen;
+
+    /// <summary>
+    /// Which panel is on screen when the three do not fit side by side. Ignored on a wide
+    /// screen, where all three are visible at once.
+    /// </summary>
+    private string _pane = "list";
     private string? _loadedTarget;
     private IReadOnlyCollection<string> _favorites = [];
     private IReadOnlyList<string> _recents = [];
@@ -170,6 +192,7 @@ else if (_dashboard is not null && _definition is not null)
         _response = null;
         _previousResponse = null;
         _sweepOpen = false;
+        _pane = "list";
 
         if (string.IsNullOrWhiteSpace(target))
         {
@@ -282,6 +305,9 @@ else if (_dashboard is not null && _definition is not null)
         _response = null;
         _previousResponse = null;
 
+        // On a narrow screen the point of picking an endpoint is to see its request form.
+        _pane = "detail";
+
         // Picking a single endpoint leaves the bulk view; the two share the centre panel.
         _sweepOpen = false;
     }
@@ -289,6 +315,7 @@ else if (_dashboard is not null && _definition is not null)
     private void ToggleSweep()
     {
         _sweepOpen = !_sweepOpen;
+        _pane = _sweepOpen ? "detail" : "list";
     }
 
     private void ChangeEnvironment(string environment)
@@ -313,6 +340,9 @@ else if (_dashboard is not null && _definition is not null)
         // refreshed rather than waiting for the next page load.
         if (response is not null)
         {
+            // A finished call is the moment the answer matters, so the narrow layout moves to
+            // it instead of leaving the user to scroll for the result they just asked for.
+            _pane = "response";
             await LoadUserStateAsync();
         }
     }

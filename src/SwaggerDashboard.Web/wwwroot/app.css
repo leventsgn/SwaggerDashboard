@@ -1145,6 +1145,12 @@ code, pre, .sd-code {
     margin-bottom: var(--sd-4);
 }
 
+.sd-page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sd-2);
+}
+
 .sd-panel {
     border: 1px solid var(--sd-border);
     border-radius: var(--sd-radius);
@@ -1412,18 +1418,63 @@ td.sd-row-actions > .sd-actions-grid {
     }
 }
 
+/* The pane switcher only exists where the three panels cannot sit side by side. */
+.sd-pane-tabs {
+    display: none;
+}
+
 @media (max-width: 900px) {
+    /* Three stacked panels meant scrolling past the whole endpoint list to reach the form,
+       and past the form to reach the answer. One pane at a time, with tabs, is the same
+       information in the order a phone can actually show it. */
     .sd-workbench,
     .sd-workbench-wide {
+        grid-template-rows: auto minmax(0, 1fr);
         grid-template-columns: 1fr;
-        height: auto;
+        height: 100%;
+    }
+
+    .sd-pane-tabs {
+        display: flex;
+        gap: var(--sd-1);
+        padding: var(--sd-1) var(--sd-2);
+        border-bottom: 1px solid var(--sd-border);
+        background: var(--sd-surface-1);
+    }
+
+    .sd-pane-tabs button {
+        flex: 1 1 0;
+        background: none;
+        border: 0;
+        border-radius: var(--sd-radius-sm);
+        padding: var(--sd-2) var(--sd-1);
+        font-size: var(--sd-text-md);
+        color: var(--sd-text-muted);
+    }
+
+    .sd-pane-tabs button.active {
+        background: var(--sd-surface-0);
+        color: var(--sd-text);
+        font-weight: 600;
+        box-shadow: var(--sd-shadow-sm);
     }
 
     .sd-left,
+    .sd-center,
     .sd-right {
         border: 0;
-        border-bottom: 1px solid var(--sd-border);
-        max-height: 22rem;
+        max-height: none;
+    }
+
+    /* Only the selected pane is laid out; the others are removed rather than hidden so the
+       page has one scroll position instead of three. */
+    .sd-workbench[data-pane="list"] .sd-center,
+    .sd-workbench[data-pane="list"] .sd-right,
+    .sd-workbench[data-pane="detail"] .sd-left,
+    .sd-workbench[data-pane="detail"] .sd-right,
+    .sd-workbench[data-pane="response"] .sd-left,
+    .sd-workbench[data-pane="response"] .sd-center {
+        display: none;
     }
 
     .sd-form-grid {
@@ -1431,12 +1482,37 @@ td.sd-row-actions > .sd-actions-grid {
         gap: var(--sd-1);
     }
 
+    /* The bar keeps every destination reachable by scrolling sideways rather than dropping
+       items or wrapping into a second row that pushes the workbench off screen. */
     .sd-topbar {
         gap: var(--sd-3);
         padding: 0 var(--sd-2);
+        overflow-x: auto;
+        scrollbar-width: none;
     }
 
-    .sd-brand-text {
+    .sd-topbar::-webkit-scrollbar {
         display: none;
+    }
+
+    .sd-topbar > * {
+        flex: 0 0 auto;
+    }
+
+    .sd-brand-text,
+    .sd-user {
+        display: none;
+    }
+
+    .sd-center {
+        padding: var(--sd-3);
+    }
+
+    .sd-detail-path {
+        font-size: var(--sd-text-base);
+    }
+
+    .sd-page {
+        padding: var(--sd-4) var(--sd-3) var(--sd-5);
     }
 }
