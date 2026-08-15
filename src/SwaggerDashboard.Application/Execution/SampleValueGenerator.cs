@@ -8,11 +8,11 @@ namespace SwaggerDashboard.Application.Execution;
 /// Produces a plausible test value for a schema field.
 /// </summary>
 /// <remarks>
-/// Used only by the explicit "fill with sample data" action, never automatically: a request
-/// that quietly carries invented values is worse than an empty form, because the user cannot
-/// tell what they are about to send. Generated values are deliberately recognisable as test
-/// data and use the reserved documentation ranges (example.com, 192.0.2.0/24) so that a
-/// sample that escapes into a real system points nowhere.
+/// Drives the pre-filled request form and the bulk run. Generated values are always shown in
+/// the form before anything is sent, which is what makes filling by default acceptable: the
+/// user can read and change every value they are about to submit. They are deliberately
+/// recognisable as test data and use the reserved documentation ranges (example.com,
+/// 192.0.2.0/24) so that a sample escaping into a real system points nowhere.
 /// </remarks>
 public static class SampleValueGenerator
 {

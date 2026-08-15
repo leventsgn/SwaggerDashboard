@@ -378,4 +378,126 @@ public class EndToEndTests : IAsyncLifetime
         Assert.Equal(ResolveStatus.ProvisioningFailed, result.Status);
         Assert.Equal(0, await db.ApiDefinitions.CountAsync());
     }
+
+    [Fact]
+    public async Task A_sweep_calls_every_endpoint_with_generated_data_and_reports_each_status()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var sweep = scope.ServiceProvider.GetRequiredService<IEndpointSweepService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var request = new SweepRequest { ApiDefinitionId = resolved.Definition!.Id, UserId = "1" };
+
+        var results = new List<SweepResult>();
+        await foreach (var result in sweep.RunAsync(request))
+        {
+            results.Add(result);
+        }
+
+        Assert.Equal(5, await sweep.CountAsync(request));
+        Assert.Equal(5, results.Count);
+
+        // Every endpoint ran without a single value being typed, including the one with a
+        // required path parameter and the one with a required body.
+        Assert.Equal(200, results.Single(r => r.Path == "/items/{id}").StatusCode);
+        Assert.Equal(201, results.Single(r => r.Method == "POST").StatusCode);
+        Assert.Equal(4, results.Count(r => r.Outcome == SweepOutcome.Success));
+
+        // The deliberately broken endpoint is reported as failed rather than aborting the run.
+        var failed = results.Single(r => r.Outcome == SweepOutcome.Failed);
+        Assert.Equal("/boom", failed.Path);
+        Assert.Equal(500, failed.StatusCode);
+
+        // The generated body really reached the target, not an empty one.
+        Assert.Contains("\"name\"", _target.LastRequestBody);
+    }
+
+    [Fact]
+    public async Task A_read_only_sweep_leaves_the_writing_endpoints_alone()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var sweep = scope.ServiceProvider.GetRequiredService<IEndpointSweepService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+
+        var results = new List<SweepResult>();
+        await foreach (var result in sweep.RunAsync(new SweepRequest
+        {
+            ApiDefinitionId = resolved.Definition!.Id,
+            UserId = "1",
+            ReadOnlyMethodsOnly = true,
+        }))
+        {
+            results.Add(result);
+        }
+
+        Assert.Equal(4, results.Count);
+        Assert.DoesNotContain(results, r => r.Method == "POST");
+    }
+
+    [Fact]
+    public async Task A_sweep_is_logged_but_does_not_count_as_recently_used()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var sweep = scope.ServiceProvider.GetRequiredService<IEndpointSweepService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+        var userEndpoints = scope.ServiceProvider.GetRequiredService<IUserEndpointService>();
+        var logs = scope.ServiceProvider.GetRequiredService<IRequestLogService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var definition = resolved.Definition!;
+
+        await foreach (var _ in sweep.RunAsync(new SweepRequest { ApiDefinitionId = definition.Id, UserId = "1" }))
+        {
+        }
+
+        // A sweep touches every endpoint, so counting it would make the shortcut list say the
+        // user recently used all of them.
+        Assert.Empty(await userEndpoints.GetRecentSlugsAsync(definition.Id, "1", 8));
+
+        // It is still a real outbound call and stays in the audit trail.
+        var recorded = await logs.GetRecentAsync(definition.Id, 20);
+        Assert.Equal(5, recorded.Count);
+        Assert.All(recorded, entry => Assert.True(entry.IsBulkRun));
+
+        // A call the user makes by hand still shows up.
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "page");
+        await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = definition.Id,
+            OperationSlug = operation.Slug,
+            UserId = "1",
+        });
+
+        Assert.Equal(operation.Slug, Assert.Single(await userEndpoints.GetRecentSlugsAsync(definition.Id, "1", 8)));
+    }
+
+    [Fact]
+    public async Task A_cancelled_sweep_stops_and_keeps_what_it_already_ran()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var sweep = scope.ServiceProvider.GetRequiredService<IEndpointSweepService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        using var cts = new CancellationTokenSource();
+
+        var results = new List<SweepResult>();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var result in sweep.RunAsync(
+                new SweepRequest { ApiDefinitionId = resolved.Definition!.Id, UserId = "1" }, cts.Token))
+            {
+                results.Add(result);
+                cts.Cancel();
+            }
+        });
+
+        // The rows produced before the stop are the user's; they are not rolled back.
+        Assert.Single(results);
+    }
 }

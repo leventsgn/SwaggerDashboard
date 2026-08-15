@@ -1,0 +1,222 @@
+@implements IDisposable
+@inject IEndpointSweepService SweepService
+@inject CurrentUserAccessor CurrentUserAccessor
+
+@* Centre panel: runs every endpoint with generated data and reports each one's status. *@
+
+<div class="sd-sweep">
+    <header class="sd-sweep-head">
+        <h3>Toplu test</h3>
+        <p class="text-secondary">
+            Her endpoint dokümandaki tip ve format bilgisine göre üretilen örnek verilerle,
+            seçili ortama karşı sırayla çağrılır. Sonuç listesindeki satıra tıklayarak
+            endpointin kendi ekranına geçebilirsiniz.
+        </p>
+    </header>
+
+    @if (!ReadOnlyOnly)
+    {
+        <div class="alert alert-warning py-2">
+            <strong>Dikkat:</strong> POST, PUT, PATCH ve DELETE endpointleri de gerçekten
+            çağrılır; hedef ortamda veri oluşabilir, değişebilir veya silinebilir. Üretim
+            ortamına karşı çalıştırmadan önce iki kez düşünün.
+        </div>
+    }
+
+    <div class="sd-sweep-options">
+        <label class="sd-check">
+            <input type="checkbox" checked="@ReadOnlyOnly" disabled="@_running" @onchange="ToggleReadOnly" />
+            Yalnızca okuma metotları (GET, HEAD, OPTIONS)
+        </label>
+        <label class="sd-check">
+            <input type="checkbox" checked="@IncludeDeprecated" disabled="@_running" @onchange="ToggleDeprecated" />
+            Deprecated endpointler dahil
+        </label>
+    </div>
+
+    <div class="sd-actions">
+        @if (_running)
+        {
+            <button type="button" class="btn btn-outline-danger" @onclick="Cancel">Durdur</button>
+            <span class="text-secondary small">@_results.Count / @_total çalıştırıldı</span>
+        }
+        else if (CanExecute)
+        {
+            <button type="button" class="btn btn-primary" @onclick="RunAsync">
+                @(_results.Count == 0 ? "Tümünü çalıştır" : "Yeniden çalıştır")
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-primary" disabled>Tümünü çalıştır</button>
+            <span class="text-secondary small">Endpoint çalıştırma yetkiniz yok.</span>
+        }
+
+        @if (_cancelled)
+        {
+            <span class="text-secondary small">Durduruldu.</span>
+        }
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger py-2">@_error</div>
+    }
+
+    @if (_results.Count > 0)
+    {
+        <div class="sd-sweep-summary">
+            <span class="sd-sweep-count sd-sweep-success">@SuccessCount başarılı</span>
+            <span class="sd-sweep-count sd-sweep-failed">@FailedCount başarısız</span>
+            <span class="sd-sweep-count sd-sweep-skipped">@SkippedCount atlandı</span>
+            <span class="text-secondary small">toplam @TotalDuration ms</span>
+        </div>
+
+        <table class="table table-sm sd-table sd-sweep-table">
+            <thead>
+            <tr>
+                <th>Metot</th>
+                <th>Path</th>
+                <th>Durum</th>
+                <th class="text-end">Süre</th>
+                <th class="text-end">Boyut</th>
+                <th>Not</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var result in _results)
+            {
+                <tr class="sd-sweep-row @RowClass(result.Outcome)" @onclick="() => OnSelect.InvokeAsync(result.Slug)">
+                    <td><span class="sd-method @EndpointList.MethodClass(result.Method)">@result.Method</span></td>
+                    <td class="sd-break"><code>@result.Path</code></td>
+                    <td>@StatusText(result)</td>
+                    <td class="text-end">@(result.Outcome == SweepOutcome.Skipped ? "—" : $"{result.DurationMilliseconds} ms")</td>
+                    <td class="text-end">@(result.Outcome == SweepOutcome.Skipped ? "—" : $"{result.ContentLength} B")</td>
+                    <td class="sd-break small text-secondary">@result.Message</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ApiDefinition Definition { get; set; } = default!;
+
+    [Parameter]
+    public string? Environment { get; set; }
+
+    [Parameter]
+    public bool CanExecute { get; set; }
+
+    [Parameter]
+    public string? UserId { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelect { get; set; }
+
+    private readonly List<SweepResult> _results = [];
+
+    private CancellationTokenSource? _cts;
+    private bool _running;
+    private bool _cancelled;
+    private string? _error;
+    private int _total;
+
+    /// <summary>
+    /// Write methods are included by default because the point of the button is to see every
+    /// endpoint's state, and excluding them would quietly answer a different question. The
+    /// warning above the switch is what makes that choice informed.
+    /// </summary>
+    private bool ReadOnlyOnly { get; set; }
+
+    private bool IncludeDeprecated { get; set; } = true;
+
+    private int SuccessCount => _results.Count(r => r.Outcome == SweepOutcome.Success);
+
+    private int FailedCount => _results.Count(r => r.Outcome == SweepOutcome.Failed);
+
+    private int SkippedCount => _results.Count(r => r.Outcome == SweepOutcome.Skipped);
+
+    private long TotalDuration => _results.Sum(r => r.DurationMilliseconds);
+
+    private void ToggleReadOnly(ChangeEventArgs args) => ReadOnlyOnly = args.Value is true;
+
+    private void ToggleDeprecated(ChangeEventArgs args) => IncludeDeprecated = args.Value is true;
+
+    private static string RowClass(SweepOutcome outcome) => outcome switch
+    {
+        SweepOutcome.Success => "sd-sweep-ok",
+        SweepOutcome.Failed => "sd-sweep-bad",
+        _ => "sd-sweep-skip",
+    };
+
+    private static string StatusText(SweepResult result)
+    {
+        if (result.Outcome == SweepOutcome.Skipped)
+        {
+            return "Atlandı";
+        }
+
+        // A transport failure never reached the target, so there is no status code to show.
+        return result.StatusCode == 0
+            ? "Bağlanılamadı"
+            : $"{result.StatusCode} {result.ReasonPhrase}".TrimEnd();
+    }
+
+    private SweepRequest BuildRequest() => new()
+    {
+        ApiDefinitionId = Definition.Id,
+        EnvironmentName = Environment,
+        UserId = UserId,
+        ClientIp = CurrentUserAccessor.ClientIp,
+        ReadOnlyMethodsOnly = ReadOnlyOnly,
+        IncludeDeprecated = IncludeDeprecated,
+    };
+
+    private async Task RunAsync()
+    {
+        _results.Clear();
+        _error = null;
+        _cancelled = false;
+        _running = true;
+
+        _cts?.Dispose();
+        _cts = new CancellationTokenSource();
+
+        try
+        {
+            var request = BuildRequest();
+            _total = await SweepService.CountAsync(request, _cts.Token);
+
+            // Rows are rendered as they arrive: a sweep of a large API takes long enough that
+            // a spinner alone would leave the user guessing whether anything is happening.
+            await foreach (var result in SweepService.RunAsync(request, _cts.Token))
+            {
+                _results.Add(result);
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _cancelled = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Toplu çalıştırma tamamlanamadı: {ex.Message}";
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private void Cancel() => _cts?.Cancel();
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

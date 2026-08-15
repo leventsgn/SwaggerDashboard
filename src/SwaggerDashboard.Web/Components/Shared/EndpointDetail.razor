@@ -202,9 +202,14 @@
 
         @if (HasFillableFields)
         {
-            <button type="button" class="btn btn-outline-secondary" @onclick="FillWithSamples"
+            <button type="button" class="btn btn-outline-secondary" @onclick="() => FillWithSamples(true)"
                     title="Boş alanları dokümandaki tip ve format bilgisine göre örnek değerlerle doldurur. Girdiğiniz değerlere dokunmaz.">
                 Örnek verilerle doldur
+            </button>
+
+            <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm"
+                    title="Otomatik doldurulan değerler dahil tüm alanları başlangıç durumuna döndürür.">
+                Alanları temizle
             </button>
         }
     </div>
@@ -274,10 +279,13 @@
     /// Fills the empty fields of the whole request with generated sample values.
     /// </summary>
     /// <remarks>
-    /// When the raw view is open the tree is reloaded from the typed JSON first, so text the
-    /// user wrote there survives and the fill only adds what is still missing.
+    /// Runs on its own when the endpoint is opened, so a request is ready to send without any
+    /// typing, and again from the button after the user has cleared or edited fields. Values
+    /// already present are never overwritten either way. When the raw view is open the tree is
+    /// reloaded from the typed JSON first, so text the user wrote there survives and the fill
+    /// only adds what is still missing.
     /// </remarks>
-    private void FillWithSamples()
+    private void FillWithSamples(bool announce)
     {
         _sampleNote = null;
 
@@ -300,12 +308,25 @@
         _bodyNode?.FillWithSamples();
         OnFormChanged();
 
-        _sampleNote = "Boş alanlar örnek değerlerle dolduruldu. Desen kısıtı olan ve üretilen değerin "
-                      + "uymadığı alanlar boş bırakıldı; göndermeden önce kontrol edin.";
+        _sampleNote = announce
+            ? "Boş alanlar örnek değerlerle dolduruldu. Desen kısıtı olan ve üretilen değerin "
+              + "uymadığı alanlar boş bırakıldı; göndermeden önce kontrol edin."
+            : null;
     }
 
     protected override void OnInitialized()
     {
+        BuildForm(fill: true);
+        LoadStoredCredential();
+    }
+
+    /// <summary>
+    /// Rebuilds the request form from the document, optionally pre-filled with sample values.
+    /// </summary>
+    private void BuildForm(bool fill)
+    {
+        _parameterNodes.Clear();
+
         foreach (var parameter in Operation.Parameters)
         {
             _parameterNodes[ParameterKey(parameter)] =
@@ -313,18 +334,43 @@
         }
 
         _bodyContent = Operation.RequestBody?.Contents.FirstOrDefault();
+        _bodyNode = null;
+        _rawBody = string.Empty;
+        _rawParseError = null;
+        _validationError = null;
+        _files.Clear();
 
         if (_bodyContent is not null)
         {
             _contentType = _bodyContent.ContentType;
             _bodyNode = new FormNode(_bodyContent.Schema, null, true) { Included = true };
-            _rawBody = _bodyContent.ExampleJson ?? _bodyNode.ToJsonString();
         }
 
-        LoadStoredCredential();
+        // Filled up front rather than on demand: an endpoint that opens ready to run is the
+        // difference between one click and a form to type out, and the document already says
+        // what a plausible value looks like. Nothing here is overwritten later.
+        if (fill)
+        {
+            FillWithSamples(announce: false);
+        }
+
+        if (_bodyContent is not null)
+        {
+            _rawBody = _bodyContent.ExampleJson ?? _bodyNode!.ToJsonString();
+        }
     }
 
-    private static string ParameterKey(DashboardParameter parameter) => $"{parameter.In}:{parameter.Name}";
+    /// <summary>
+    /// Empties the form, sample values included, for a request the user wants to type out.
+    /// </summary>
+    private void ResetForm()
+    {
+        BuildForm(fill: false);
+        _sampleNote = "Alanlar temizlendi. Yeniden doldurmak için \"Örnek verilerle doldur\" kullanın.";
+    }
+
+    private static string ParameterKey(DashboardParameter parameter) =>
+        RequestComposer.ParameterKey(parameter);
 
     private static string LocationLabel(string location) => location switch
     {
@@ -391,6 +437,7 @@
         if (_bodyContent is not null)
         {
             _bodyNode = new FormNode(_bodyContent.Schema, null, true) { Included = true };
+            _bodyNode.FillWithSamples();
             _rawBody = _bodyContent.ExampleJson ?? _bodyNode.ToJsonString();
         }
 
@@ -550,56 +597,10 @@
             Body = BuildBody(),
         };
 
-        foreach (var parameter in Operation.Parameters)
+        if (!RequestComposer.TryApplyParameters(Operation, _parameterNodes, request, out var missing))
         {
-            var node = _parameterNodes[ParameterKey(parameter)];
-            var value = node.Value;
-
-            if (string.IsNullOrEmpty(value) && !node.IsArray)
-            {
-                if (parameter.Required && parameter.In == ParameterLocations.Path)
-                {
-                    _validationError = $"Zorunlu path parametresi girilmedi: {parameter.Name}";
-                    return null;
-                }
-
-                if (!node.Included)
-                {
-                    continue;
-                }
-            }
-
-            switch (parameter.In)
-            {
-                case ParameterLocations.Path:
-                    request.PathParameters[parameter.Name] = value;
-                    break;
-
-                case ParameterLocations.Header:
-                    request.Headers[parameter.Name] = value;
-                    break;
-
-                case ParameterLocations.Cookie:
-                    request.Cookies[parameter.Name] = value;
-                    break;
-
-                default:
-                    if (node.IsArray)
-                    {
-                        // Array query parameters repeat the key, which is the default
-                        // "form" style with explode enabled.
-                        foreach (var item in node.Items.Where(i => !string.IsNullOrEmpty(i.Value)))
-                        {
-                            request.QueryParameters.Add(new(parameter.Name, item.Value));
-                        }
-                    }
-                    else
-                    {
-                        request.QueryParameters.Add(new(parameter.Name, value));
-                    }
-
-                    break;
-            }
+            _validationError = $"Zorunlu path parametresi girilmedi: {missing}";
+            return null;
         }
 
         foreach (var file in _files)

@@ -40,4 +40,14 @@ public class ApiRequestLog
     public bool IsSuccess { get; set; }
 
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Whether the call came from a bulk run rather than someone opening the endpoint.
+    /// </summary>
+    /// <remarks>
+    /// Recorded so the "recently used" shortcuts can ignore it. One sweep touches every
+    /// endpoint of the API, and without this the list would say the user recently used all of
+    /// them, which is exactly the information the shortcut exists to filter out.
+    /// </remarks>
+    public bool IsBulkRun { get; set; }
 }

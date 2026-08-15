@@ -50,7 +50,7 @@ else if (_dashboard is not null && _definition is not null)
         </div>
     }
 
-    <div class="sd-workbench">
+    <div class="sd-workbench @(_sweepOpen ? "sd-workbench-wide" : null)">
         <EndpointList Dashboard="_dashboard"
                       Definition="_definition"
                       SelectedSlug="@_selectedSlug"
@@ -58,11 +58,21 @@ else if (_dashboard is not null && _definition is not null)
                       SelectedEnvironment="@_environment"
                       Favorites="_favorites"
                       Recents="_recents"
+                      SweepOpen="_sweepOpen"
                       OnSelect="SelectOperation"
-                      OnEnvironmentChange="ChangeEnvironment" />
+                      OnEnvironmentChange="ChangeEnvironment"
+                      OnToggleSweep="ToggleSweep" />
 
         <section class="sd-center">
-            @if (_selectedOperation is null)
+            @if (_sweepOpen)
+            {
+                <SweepPanel Definition="_definition"
+                            Environment="@_environment"
+                            CanExecute="_user.CanExecute"
+                            UserId="@_user.UserId"
+                            OnSelect="SelectOperation" />
+            }
+            else if (_selectedOperation is null)
             {
                 <div class="sd-empty">
                     <h3>@_dashboard.Title</h3>
@@ -100,7 +110,10 @@ else if (_dashboard is not null && _definition is not null)
             }
         </section>
 
-        <ResponsePanel Response="_response" Executing="_executing" />
+        @if (!_sweepOpen)
+        {
+            <ResponsePanel Response="_response" Executing="_executing" />
+        }
     </div>
 }
 
@@ -122,6 +135,7 @@ else if (_dashboard is not null && _definition is not null)
     private bool _loading = true;
     private bool _executing;
     private bool _wasProvisioned;
+    private bool _sweepOpen;
     private string? _loadedTarget;
     private IReadOnlyCollection<string> _favorites = [];
     private IReadOnlyList<string> _recents = [];
@@ -147,6 +161,7 @@ else if (_dashboard is not null && _definition is not null)
         _definition = null;
         _selectedOperation = null;
         _response = null;
+        _sweepOpen = false;
 
         if (string.IsNullOrWhiteSpace(target))
         {
@@ -254,6 +269,14 @@ else if (_dashboard is not null && _definition is not null)
         _selectedOperation = _dashboard?.Operations
             .FirstOrDefault(o => string.Equals(o.Slug, slug, StringComparison.OrdinalIgnoreCase));
         _response = null;
+
+        // Picking a single endpoint leaves the bulk view; the two share the centre panel.
+        _sweepOpen = false;
+    }
+
+    private void ToggleSweep()
+    {
+        _sweepOpen = !_sweepOpen;
     }
 
     private void ChangeEnvironment(string environment)

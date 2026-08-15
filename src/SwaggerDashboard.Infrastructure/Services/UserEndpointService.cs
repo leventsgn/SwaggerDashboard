@@ -73,7 +73,8 @@ public class UserEndpointService : IUserEndpointService
             .AsNoTracking()
             .Where(l => l.ApiDefinitionId == apiDefinitionId &&
                         l.UserId == userId &&
-                        l.ApiEndpointId != null)
+                        l.ApiEndpointId != null &&
+                        !l.IsBulkRun)
             .OrderByDescending(l => l.Id)
             .Select(l => l.ApiEndpointId!.Value)
             .Take(RecentScanWindow)

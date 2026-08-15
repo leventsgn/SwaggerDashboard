@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IApiDefinitionService>(sp => sp.GetRequiredService<ApiDefinitionService>());
         services.AddScoped<ISwaggerRefreshService, SwaggerRefreshService>();
         services.AddScoped<IApiProxyService, ApiProxyService>();
+        services.AddScoped<IEndpointSweepService, EndpointSweepService>();
         services.AddScoped<IRequestLogService, RequestLogService>();
         services.AddScoped<IUserEndpointService, UserEndpointService>();
         services.AddScoped<IApiEnvironmentService, ApiEnvironmentService>();

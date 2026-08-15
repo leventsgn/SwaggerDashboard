@@ -170,7 +170,8 @@ public class ApiProxyService : IApiProxyService
             .FirstOrDefaultAsync(cancellationToken);
 
         await _logService.RecordAsync(
-            definition.Id, endpointId, response, request.UserId, request.ClientIp, cancellationToken);
+            definition.Id, endpointId, response, request.UserId, request.ClientIp,
+            request.IsBulkRun, cancellationToken);
 
         if (!guarded.IsCompleted)
         {

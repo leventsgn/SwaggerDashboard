@@ -173,9 +173,13 @@ takma ad yönetim panelini erişilemez hâle getirebilirdi.
 
 ### Örnek verilerle doldurma
 
-Form alanları dokümandaki `default` ve `example` değerleriyle açılır; bunun ötesinde hiçbir
-alan kendiliğinden doldurulmaz. Endpoint ekranındaki **Örnek verilerle doldur** butonu, boş
-alanları şemadaki tip ve format bilgisine göre üretilmiş değerlerle doldurur:
+Bir endpoint açıldığında istek formu **kendiliğinden dolu gelir**: önce dokümandaki `default`
+ve `example` değerleri, sonra şemadaki tip ve format bilgisinden üretilen örnekler. Amaç, her
+endpointin tek tıkla çalıştırılabilmesi. Üretilen değerler gönderilmeden önce formda görünür
+ve değiştirilebilir; **Alanları temizle** hepsini boşaltır, **Örnek verilerle doldur** boş
+kalanları yeniden doldurur.
+
+Üretim kuralları:
 
 - `uuid` gerçek bir GUID, `date-time` geçerli bir zaman damgası, `email` ve `uri` ise
   ayrılmış dokümantasyon alanlarını (`example.com`, `192.0.2.0/24`) kullanır — üretilen bir
@@ -189,8 +193,26 @@ alanları şemadaki tip ve format bilgisine göre üretilmiş değerlerle doldur
 - Girilmiş değerlerin üzerine yazılmaz, `readOnly` alanlar atlanır (yanıta aittirler),
   dosya alanları yükleme kontrolüne bırakılır.
 
-Doldurma yalnızca bu butona basıldığında çalışır. Otomatik olsaydı kullanıcı ne gönderdiğini
-ayırt edemezdi.
+### Toplu test
+
+Sol menüdeki **Toplu test** butonu, API'nin bütün endpointlerini üretilen örnek verilerle
+sırayla çağırır ve her birinin durumunu tek tabloda listeler: HTTP kodu, süre, yanıt boyutu.
+Bir satıra tıklamak o endpointin kendi ekranını açar. Çağrılar seçili ortama gider, yani aynı
+liste Test ve Production için ayrı ayrı alınabilir.
+
+- **Yazan metotlar da çalışır.** POST, PUT, PATCH ve DELETE gerçekten gönderilir; hedefte
+  veri oluşabilir, değişebilir, silinebilir. Panelin başındaki uyarı bunu söyler ve
+  **Yalnızca okuma metotları** kutusu listeyi GET/HEAD/OPTIONS ile sınırlar. Varsayılan
+  olarak hepsi dahildir: butonun amacı her endpointin durumunu görmek, yazanları sessizce
+  dışarıda bırakmak başka bir sorunun cevabını verirdi.
+- **Dosya yükleyen endpointler atlanır**, çünkü bir dosya için dürüst bir örnek içerik
+  üretilemez. Zorunlu bir path parametresi için desene uyan değer üretilemediğinde de aynı
+  şekilde atlanır ve sebebi satırda yazar. Uydurulmuş bir istekle "başarısız" raporlamak,
+  kullanıcının düzeltemeyeceği bir hata üretmek olurdu.
+- **Çağrılar sıralıdır.** Proxy istek başına scoped bir `DbContext` kullanır, paralel
+  çağrılar onun üzerinde çakışır; ayrıca bütün endpointleri aynı anda göndermek, test
+  ortamının çöküşünü toplu testin kendi sonucu hâline getirir. Sonuçlar geldikçe tabloya
+  eklenir ve **Durdur** ile yarıda kesilebilir; o ana kadar alınan satırlar kalır.
 
 ### Favoriler ve son kullanılanlar
 

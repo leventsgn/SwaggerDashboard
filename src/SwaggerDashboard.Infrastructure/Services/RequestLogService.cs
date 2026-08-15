@@ -32,6 +32,7 @@ public class RequestLogService : IRequestLogService
         ProxyResponse response,
         string? userId,
         string? clientIp,
+        bool isBulkRun = false,
         CancellationToken cancellationToken = default)
     {
         var logging = _options.CurrentValue.Logging;
@@ -69,6 +70,7 @@ public class RequestLogService : IRequestLogService
             CreatedAt = response.StartedAt,
             IsSuccess = response.Success,
             ErrorMessage = Truncate(response.Error, 2000),
+            IsBulkRun = isBulkRun,
         };
 
         _db.ApiRequestLogs.Add(entry);

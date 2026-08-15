@@ -93,6 +93,12 @@ body {
     min-height: 0;
 }
 
+/* The bulk run has no single response to show, so the response panel is dropped and its
+   width goes to the results table, which needs it more. */
+.sd-workbench-wide {
+    grid-template-columns: var(--sd-left-width) minmax(0, 1fr);
+}
+
 .sd-left,
 .sd-center,
 .sd-right {
@@ -639,6 +645,94 @@ body {
 .sd-warnings {
     margin-top: 1rem;
     font-size: 0.82rem;
+}
+
+/* ---------- bulk run ---------- */
+
+.sd-sweep {
+    padding: 1rem;
+
+    /* Long path column, short everything else: past this width the status a reader is
+       scanning for drifts too far from the path it belongs to. */
+    max-width: 76rem;
+}
+
+.sd-sweep-head h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.25rem;
+}
+
+.sd-sweep-head p {
+    font-size: 0.85rem;
+    max-width: 46rem;
+}
+
+.sd-sweep-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+}
+
+.sd-sweep-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 0 0.5rem;
+}
+
+.sd-sweep-count {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--sd-radius);
+}
+
+.sd-sweep-success {
+    background: var(--bs-success-bg-subtle);
+    color: var(--bs-success-text-emphasis);
+}
+
+.sd-sweep-failed {
+    background: var(--bs-danger-bg-subtle);
+    color: var(--bs-danger-text-emphasis);
+}
+
+.sd-sweep-skipped {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-secondary-color);
+}
+
+.sd-sweep-table {
+    table-layout: auto;
+}
+
+.sd-sweep-row {
+    cursor: pointer;
+}
+
+/* The status colour is carried by a left edge rather than a full row tint: at thirty rows a
+   tinted table is harder to read than the codes it is meant to highlight. */
+.sd-sweep-row td:first-child {
+    border-left: 3px solid transparent;
+}
+
+.sd-sweep-ok td:first-child {
+    border-left-color: var(--bs-success);
+}
+
+.sd-sweep-bad td:first-child {
+    border-left-color: var(--bs-danger);
+}
+
+.sd-sweep-skip td:first-child {
+    border-left-color: var(--bs-secondary-color);
+}
+
+.sd-sweep-row:hover {
+    background: var(--bs-tertiary-bg);
 }
 
 /* ---------- responsive: panels become stacked sections ---------- */

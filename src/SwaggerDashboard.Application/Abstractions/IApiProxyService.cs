@@ -43,6 +43,9 @@ public record ProxyRequest
     public string? UserId { get; init; }
 
     public string? ClientIp { get; init; }
+
+    /// <summary>Set when the call is one of many made by a bulk run.</summary>
+    public bool IsBulkRun { get; init; }
 }
 
 public record ProxyFile(string FieldName, string FileName, string ContentType, byte[] Content);

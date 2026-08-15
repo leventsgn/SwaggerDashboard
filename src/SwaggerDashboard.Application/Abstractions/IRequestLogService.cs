@@ -10,6 +10,7 @@ public interface IRequestLogService
         ProxyResponse response,
         string? userId,
         string? clientIp,
+        bool isBulkRun = false,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ApiRequestLog>> GetRecentAsync(

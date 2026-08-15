@@ -110,10 +110,10 @@ public class FormNode
     /// Fills empty fields with generated sample values.
     /// </summary>
     /// <remarks>
-    /// Only ever called from an explicit user action. Values the user already entered are
-    /// never overwritten, read-only properties are skipped because they belong to responses
-    /// rather than requests, and a field whose value cannot be generated honestly is left
-    /// empty so the gap stays visible.
+    /// Values already present are never overwritten, which is what lets this run both when the
+    /// form is first built and again from the button afterwards. Read-only properties are
+    /// skipped because they belong to responses rather than requests, and a field whose value
+    /// cannot be generated honestly is left empty so the gap stays visible.
     /// </remarks>
     public void FillWithSamples()
     {

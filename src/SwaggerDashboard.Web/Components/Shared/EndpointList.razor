@@ -20,6 +20,11 @@
         </select>
     }
 
+    <button type="button" class="btn btn-sm w-100 mb-2 @(SweepOpen ? "btn-primary" : "btn-outline-primary")"
+            @onclick="() => OnToggleSweep.InvokeAsync()">
+        @(SweepOpen ? "Endpoint listesine dön" : "Toplu test")
+    </button>
+
     <input class="form-control form-control-sm sd-search" type="search" placeholder="Ara: path, özet, operationId"
            value="@_search" @oninput="OnSearchInput" />
 
@@ -120,6 +125,12 @@
 
     [Parameter]
     public EventCallback<string> OnEnvironmentChange { get; set; }
+
+    [Parameter]
+    public bool SweepOpen { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleSweep { get; set; }
 
     [Parameter]
     public IReadOnlyCollection<string> Favorites { get; set; } = [];
