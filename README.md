@@ -501,8 +501,18 @@ dotnet test
 Kapsam: OpenAPI ayrıştırma (`$ref`, özyineleme, `allOf`, `oneOf`, enum, deprecated, güvenlik
 şemaları, multipart), `DashboardJson` üretimi, kanonik hash, URL normalizasyonu ve route
 çözümleme, otomatik kayıt ve eşzamanlılık, rol/yetki kuralları, SSRF politikası, proxy istek
-kurulumu, dinamik form ağacı, maskeleme, kod üretimi, swagger yenileme farkı ve gerçek bir
-HTTP hedefine karşı uçtan uca akış.
+kurulumu, dinamik form ağacı, maskeleme, kod üretimi, swagger yenileme farkı, örnek veri
+üretimi, toplu test, kaydedilmiş istekler, geçmişten geri yükleme, yanıt karşılaştırma,
+OAuth2 client credentials ve gerçek bir HTTP hedefine karşı uçtan uca akış.
+
+### Bileşen testleri
+
+Arayüz kuralları (arama ve filtreler, alan doğrulama işaretleri, sekmelerin gösterdiği içerik,
+maskeleme) bileşenin kendisinde yaşar. Bunlar [bUnit](https://bunit.dev) ile bileşen tek başına
+render edilerek doğrulanır: aynı kuralları tarayıcı sürerek denemek uygulamanın tamamının ayakta
+olmasını gerektirir ve saniyeler sürer; burada milisaniyeler sürüyor ve hata doğrudan ilgili
+bileşeni gösteriyor. Tarayıcı testleri yerine geçmez — onlar hâlâ akışların gerçekten uçtan uca
+çalıştığını gösteriyor.
 
 ## Docker
 
