@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IApiProxyService, ApiProxyService>();
         services.AddScoped<IRequestLogService, RequestLogService>();
         services.AddScoped<IUserEndpointService, UserEndpointService>();
+        services.AddScoped<IApiEnvironmentService, ApiEnvironmentService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<GuardedHttpSender>();
 

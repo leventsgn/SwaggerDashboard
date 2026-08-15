@@ -213,6 +213,27 @@ Baytlar Blazor devresinden değil, ayrı bir HTTP isteğiyle iner: megabaytlarca
 JS interop argümanı olarak base64 ile geçirmek çalışmaz. Bağlantı tek kullanımlıktır, 10
 dakika sonra düşer ve yalnızca isteği yapan oturuma açıktır.
 
+### Ortam yönetimi
+
+Bir API birden fazla adres üzerinden çağrılabilir: Development, Test, PreProd, Production.
+`/admin/apis/{id}` ekranındaki **Ortamlar** tablosundan ortam eklenir, düzenlenir ve silinir;
+dashboard'un sol üstündeki seçici bu listeden beslenir ve seçilen ortamın taban adresi proxy
+çağrısında kullanılır. API ilk kez otomatik oluşturulduğunda swagger adresinden türetilen tek
+bir `Default` ortamı yazılır.
+
+Kurallar:
+
+- Her zaman tam olarak bir ortam varsayılandır. İlk eklenen ortam istenmese de varsayılan olur
+  (aksi hâlde dashboard hiçbir şey seçili olmadan açılırdı), varsayılanın işareti kaldırılırsa
+  bir diğeri devralır, varsayılan silinirse kalanlardan biri devralır.
+- Son ortam da silinebilir; o durumda çağrılar API'nin kendi taban adresine düşer.
+- Ortam adı bir API içinde benzersizdir ve en fazla 64 karakterdir.
+- Taban adres kaydedilirken de whitelist'e takılır. Aynı kural çağrı anında zaten
+  uygulanıyor, ama hatayı yapıldığı ekranda söylemek gerekir; yoksa yanlış ortam sessizce
+  kaydedilir ve ilk istekte anlaşılmaz bir hataya dönüşür. Kaydetme sırasında yalnızca ad
+  çözümlemesi gerektirmeyen kısımlar denetlenir — bir ortam çoğu zaman var olmadan önce
+  tanımlanır.
+
 ### Swagger yenileme
 
 `/admin/apis` ekranında:

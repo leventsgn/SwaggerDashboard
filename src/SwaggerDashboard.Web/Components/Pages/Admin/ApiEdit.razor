@@ -3,6 +3,7 @@
 @attribute [Authorize(Roles = Roles.Admin)]
 @using SwaggerDashboard.Infrastructure.Services
 @inject IApiDefinitionService DefinitionService
+@inject IApiEnvironmentService EnvironmentService
 @inject CurrentUserAccessor CurrentUserAccessor
 @inject NavigationManager Navigation
 
@@ -84,19 +85,72 @@
 
         <div class="sd-panel">
             <h3>Ortamlar</h3>
+            <p class="sd-field-help">
+                Endpoint çalıştırılırken seçilen ortamın taban adresi kullanılır. Hiç ortam
+                kalmazsa API'nin kendi taban adresine düşülür.
+            </p>
+
+            @if (_environmentError is not null)
+            {
+                <div class="alert alert-danger py-2">@_environmentError</div>
+            }
+
             <table class="table table-sm sd-table">
-                <thead><tr><th>Ad</th><th>Taban adres</th><th>Varsayılan</th></tr></thead>
+                <thead>
+                <tr><th>Ad</th><th>Taban adres</th><th>Varsayılan</th><th></th></tr>
+                </thead>
                 <tbody>
-                @foreach (var environment in _definition.Environments)
+                @foreach (var environment in _environments)
                 {
                     <tr>
-                        <td>@environment.Name</td>
-                        <td class="sd-break">@environment.BaseUrl</td>
-                        <td>@(environment.IsDefault ? "Evet" : "Hayır")</td>
+                        @if (_editingId == environment.Id)
+                        {
+                            <td><input class="form-control form-control-sm" @bind="_envName" /></td>
+                            <td><input class="form-control form-control-sm" @bind="_envBaseUrl" /></td>
+                            <td><input type="checkbox" class="form-check-input" @bind="_envIsDefault" /></td>
+                            <td class="sd-row-actions">
+                                <button class="btn btn-sm btn-primary" disabled="@_envBusy"
+                                        @onclick="SaveEnvironmentAsync">Kaydet</button>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => _editingId = null">Vazgeç</button>
+                            </td>
+                        }
+                        else
+                        {
+                            <td>@environment.Name</td>
+                            <td class="sd-break">@environment.BaseUrl</td>
+                            <td>@(environment.IsDefault ? "Evet" : "—")</td>
+                            <td class="sd-row-actions">
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => BeginEdit(environment)">Düzenle</button>
+                                <button class="btn btn-sm btn-outline-danger" disabled="@_envBusy"
+                                        @onclick="() => DeleteEnvironmentAsync(environment.Id)">Sil</button>
+                            </td>
+                        }
+                    </tr>
+                }
+
+                @if (_editingId == NewEnvironmentId)
+                {
+                    <tr>
+                        <td><input class="form-control form-control-sm" placeholder="Production" @bind="_envName" /></td>
+                        <td><input class="form-control form-control-sm" placeholder="https://api.company.com/v1" @bind="_envBaseUrl" /></td>
+                        <td><input type="checkbox" class="form-check-input" @bind="_envIsDefault" /></td>
+                        <td class="sd-row-actions">
+                            <button class="btn btn-sm btn-primary" disabled="@_envBusy"
+                                    @onclick="SaveEnvironmentAsync">Ekle</button>
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    @onclick="() => _editingId = null">Vazgeç</button>
+                        </td>
                     </tr>
                 }
                 </tbody>
             </table>
+
+            @if (_editingId is null)
+            {
+                <button class="btn btn-outline-primary btn-sm" @onclick="BeginAdd">Ortam ekle</button>
+            }
         </div>
     }
 </div>
@@ -118,6 +172,17 @@
     private bool _busy;
     private bool _confirmDelete;
 
+    /// <summary>Sentinel row id used while a new environment is being typed.</summary>
+    private const int NewEnvironmentId = -1;
+
+    private IReadOnlyList<ApiEnvironment> _environments = [];
+    private int? _editingId;
+    private string _envName = string.Empty;
+    private string _envBaseUrl = string.Empty;
+    private bool _envIsDefault;
+    private string? _environmentError;
+    private bool _envBusy;
+
     protected override async Task OnParametersSetAsync()
     {
         _user = await CurrentUserAccessor.GetAsync();
@@ -125,11 +190,79 @@
 
         if (_definition is not null)
         {
+            _environments = await EnvironmentService.ListAsync(Id);
             _name = _definition.Name;
             _description = _definition.Description;
             _routeName = _definition.RouteName;
             _baseUrl = _definition.BaseUrl;
             _allowedRoles = _definition.AllowedRoles;
+        }
+    }
+
+    private void BeginAdd()
+    {
+        _editingId = NewEnvironmentId;
+        _envName = string.Empty;
+        _envBaseUrl = _definition?.BaseUrl ?? string.Empty;
+        _envIsDefault = _environments.Count == 0;
+        _environmentError = null;
+    }
+
+    private void BeginEdit(ApiEnvironment environment)
+    {
+        _editingId = environment.Id;
+        _envName = environment.Name;
+        _envBaseUrl = environment.BaseUrl;
+        _envIsDefault = environment.IsDefault;
+        _environmentError = null;
+    }
+
+    private async Task SaveEnvironmentAsync()
+    {
+        _envBusy = true;
+        _environmentError = null;
+
+        try
+        {
+            var result = _editingId == NewEnvironmentId
+                ? await EnvironmentService.AddAsync(Id, _envName, _envBaseUrl, _envIsDefault)
+                : await EnvironmentService.UpdateAsync(_editingId!.Value, _envName, _envBaseUrl, _envIsDefault);
+
+            if (!result.Success)
+            {
+                _environmentError = result.Error;
+                return;
+            }
+
+            _editingId = null;
+            _environments = await EnvironmentService.ListAsync(Id);
+        }
+        finally
+        {
+            _envBusy = false;
+        }
+    }
+
+    private async Task DeleteEnvironmentAsync(int environmentId)
+    {
+        _envBusy = true;
+        _environmentError = null;
+
+        try
+        {
+            var result = await EnvironmentService.DeleteAsync(environmentId);
+
+            if (!result.Success)
+            {
+                _environmentError = result.Error;
+                return;
+            }
+
+            _environments = await EnvironmentService.ListAsync(Id);
+        }
+        finally
+        {
+            _envBusy = false;
         }
     }
 

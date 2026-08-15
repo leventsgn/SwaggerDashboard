@@ -27,19 +27,31 @@ public class OutboundUrlValidator : IOutboundUrlValidator
 
     private OutboundOptions Outbound => _options.CurrentValue.Outbound;
 
-    public async Task<OutboundValidationResult> ValidateAsync(Uri uri, CancellationToken cancellationToken = default)
+    public bool IsHostAllowed(Uri uri, out string? reason)
     {
         if (uri.Scheme != Uri.UriSchemeHttps &&
             !(uri.Scheme == Uri.UriSchemeHttp && Outbound.AllowInsecureHttp))
         {
-            return OutboundValidationResult.Denied(
-                $"Protokol '{uri.Scheme}' bu ortamda kullanılamaz. HTTPS kullanın.");
+            reason = $"Protokol '{uri.Scheme}' bu ortamda kullanılamaz. HTTPS kullanın.";
+            return false;
         }
 
         if (!IsHostAllowed(uri.Host))
         {
-            return OutboundValidationResult.Denied(
-                $"'{uri.Host}' izinli alan adı listesinde değil. Yöneticinizden bu adresi listeye eklemesini isteyin.");
+            reason = $"'{uri.Host}' izinli alan adı listesinde değil. " +
+                     "Yöneticinizden bu adresi listeye eklemesini isteyin.";
+            return false;
+        }
+
+        reason = null;
+        return true;
+    }
+
+    public async Task<OutboundValidationResult> ValidateAsync(Uri uri, CancellationToken cancellationToken = default)
+    {
+        if (!IsHostAllowed(uri, out var policyReason))
+        {
+            return OutboundValidationResult.Denied(policyReason!);
         }
 
         IReadOnlyList<IPAddress> addresses;
