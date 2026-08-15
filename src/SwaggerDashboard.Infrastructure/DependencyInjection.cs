@@ -58,6 +58,7 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(OutboundHttpClient.CreateHandler);
 
         services.AddHostedService<LogRetentionService>();
+        services.AddHostedService<SwaggerCheckService>();
 
         return services;
     }

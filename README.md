@@ -351,6 +351,25 @@ Kurallar:
 Dashboard yalnızca şu durumlarda yeniden üretilir: bu iki işlem, hash değişikliği, saklanan
 `DashboardJson`'un okunamaması veya şema sürümünün eskimesi.
 
+### Zamanlanmış swagger kontrolü
+
+`SwaggerDashboard:Provisioning:AutoRefreshHours` verilirse, aktif tüm API'lerin dokümanı bu
+aralıkla arka planda yeniden kontrol edilir. Yapılan iş butonunkiyle aynıdır: önce hash
+karşılaştırılır, doküman gerçekten değişmedikçe hiçbir şey yeniden üretilmez.
+
+- **Varsayılan olarak kapalıdır.** Açık olsaydı uygulama, kimsenin istemediği bir anda kayıtlı
+  her hedefe dışarı çağrı yapmaya başlardı; bunu isteyen operatör bilerek açar.
+- Pasif API'ler kontrol edilmez.
+- API'ler arasında `AutoRefreshDelaySeconds` (varsayılan 2sn) beklenir. Elli dokümanı tek
+  seferde çekmek karşı taraf için tarayıcı botu gibi görünür; kimse sonucu beklemediği için
+  bu gecikmenin maliyeti yoktur.
+- Bir hedefe ulaşılamaması taramayı durdurmaz; kalanlar kontrol edilir ve o API bir sonraki
+  turda yeniden denenir.
+- İlk tarama uygulama açılışında değil, bir aralık sonra çalışır: açılış anı, her hedefe çağrı
+  yapmak için uygulamanın en hazırlıksız olduğu andır ve her dağıtımda tekrarlanırdı.
+- Bu şekilde yapılan güncellemeler denetim alanlarına `otomatik-kontrol` aktörüyle yazılır,
+  böylece kimsenin hatırlamadığı bir değişiklik zamanlamaya bağlanabilir.
+
 ### Proxy akışı
 
 ```

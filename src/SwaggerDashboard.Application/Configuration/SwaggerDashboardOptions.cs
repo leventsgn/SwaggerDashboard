@@ -105,6 +105,27 @@ public class ProvisioningOptions
     public int MaxProvisionsPerUserPerHour { get; set; } = 20;
 
     /// <summary>
+    /// How often every active API's swagger document is re-checked in the background.
+    /// Zero or less turns the scheduled check off.
+    /// </summary>
+    /// <remarks>
+    /// Off by default. The check reaches out to every registered target on a timer, and a
+    /// platform should not start making outbound calls nobody asked for; an operator who
+    /// wants documents to track upstream changes on their own turns it on deliberately.
+    /// </remarks>
+    public int AutoRefreshHours { get; set; }
+
+    /// <summary>
+    /// Pause between two APIs during a scheduled sweep, in seconds.
+    /// </summary>
+    /// <remarks>
+    /// Checking fifty documents in one burst looks like a scraper to whoever is on the other
+    /// end. The delay spreads the load; it costs nothing, because nobody is waiting for the
+    /// result of a background check.
+    /// </remarks>
+    public int AutoRefreshDelaySeconds { get; set; } = 2;
+
+    /// <summary>
     /// Relative paths probed when the pasted URL is a swagger UI page rather than the
     /// OpenAPI document itself. Tried in order against the directory of the pasted URL
     /// and then against the host root.
