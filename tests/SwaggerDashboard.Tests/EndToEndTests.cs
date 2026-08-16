@@ -186,6 +186,82 @@ public class EndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_api_key_in_the_query_string_reaches_the_target_but_is_masked_everywhere_else()
+    {
+        // The key is part of the address here, so masking headers alone left it in the log
+        // table, on the admin log screen, in the response panel and in the generated snippet.
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+        var credentials = scope.ServiceProvider.GetRequiredService<IApiCredentialStore>();
+        var logs = scope.ServiceProvider.GetRequiredService<IRequestLogService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        credentials.Set("1", resolved.Definition!.Id, new ApiCredential
+        {
+            Kind = ApiAuthKind.ApiKey,
+            ParameterName = "api_key",
+            ParameterIn = "query",
+            Secret = "cok-gizli-anahtar",
+        });
+
+        var response = await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition.Id,
+            OperationSlug = operation.Slug,
+            PathParameters = { ["id"] = "42" },
+            UserId = "1",
+        });
+
+        Assert.True(response.Success, response.Error);
+        Assert.Contains("api_key=cok-gizli-anahtar", _target.LastQueryString);
+
+        Assert.DoesNotContain("cok-gizli-anahtar", response.RequestUrl);
+        Assert.Contains("api_key=***", Uri.UnescapeDataString(response.RequestUrl));
+
+        var entry = (await logs.GetRecentAsync(resolved.Definition.Id, 1)).Single();
+        Assert.DoesNotContain("cok-gizli-anahtar", entry.RequestUrl);
+    }
+
+    [Fact]
+    public async Task An_api_key_header_is_masked_whatever_the_document_calls_it()
+    {
+        using var scope = Scope();
+        var definitions = scope.ServiceProvider.GetRequiredService<IApiDefinitionService>();
+        var proxy = scope.ServiceProvider.GetRequiredService<IApiProxyService>();
+        var credentials = scope.ServiceProvider.GetRequiredService<IApiCredentialStore>();
+        var logs = scope.ServiceProvider.GetRequiredService<IRequestLogService>();
+
+        var resolved = await definitions.ResolveAsync("http://" + _target.SwaggerRouteTail, Developer);
+        var operation = resolved.Dashboard!.Operations.Single(o => o.OperationId == "getItemById");
+
+        // A name that is not on any fixed mask list — the document decides it, not the platform.
+        credentials.Set("1", resolved.Definition!.Id, new ApiCredential
+        {
+            Kind = ApiAuthKind.ApiKey,
+            ParameterName = "X-Auth-Token",
+            ParameterIn = "header",
+            Secret = "baslik-gizli-anahtar",
+        });
+
+        var response = await proxy.ExecuteAsync(new ProxyRequest
+        {
+            ApiDefinitionId = resolved.Definition.Id,
+            OperationSlug = operation.Slug,
+            PathParameters = { ["id"] = "42" },
+            UserId = "1",
+        });
+
+        Assert.Equal("baslik-gizli-anahtar", _target.LastRequestHeaders["X-Auth-Token"]);
+        Assert.Equal("***", response.RequestHeaders["X-Auth-Token"]);
+
+        var entry = (await logs.GetRecentAsync(resolved.Definition.Id, 1)).Single();
+        Assert.DoesNotContain("baslik-gizli-anahtar", entry.RequestHeadersJson);
+    }
+
+    [Fact]
     public async Task A_post_sends_the_json_body_and_returns_the_target_status()
     {
         using var scope = Scope();

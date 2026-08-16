@@ -1288,6 +1288,13 @@ td.sd-row-actions > .sd-actions-grid {
     padding: var(--sd-2) 0;
 }
 
+.sd-log-pager {
+    display: flex;
+    gap: var(--sd-2);
+    justify-content: flex-end;
+    margin-top: var(--sd-3);
+}
+
 .sd-log-detail h5 {
     font-size: var(--sd-text-xs);
     font-weight: 700;

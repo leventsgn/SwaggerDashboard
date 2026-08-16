@@ -34,22 +34,26 @@
             <h3>Yeni API kaydı</h3>
             <div class="sd-form-grid">
                 <label>Swagger adresi *</label>
-                <input class="form-control" @bind="_new.SwaggerUrl" placeholder="https://api.company.com/swagger" />
+                <input class="form-control" maxlength="@ApiFieldRules.UrlMaxLength" @bind="_new.SwaggerUrl"
+                       placeholder="https://api.company.com/swagger" />
 
                 <label>Ad</label>
-                <input class="form-control" @bind="_new.Name" placeholder="Boş bırakılırsa dokümandan alınır" />
+                <input class="form-control" maxlength="@ApiFieldRules.NameMaxLength" @bind="_new.Name"
+                       placeholder="Boş bırakılırsa dokümandan alınır" />
 
                 <label>Açıklama</label>
-                <input class="form-control" @bind="_new.Description" />
+                <input class="form-control" maxlength="@ApiFieldRules.DescriptionMaxLength" @bind="_new.Description" />
 
                 <label>Route adı</label>
                 <input class="form-control" @bind="_new.RouteName" placeholder="customer-api (isteğe bağlı kısa yol)" />
 
                 <label>Taban adres</label>
-                <input class="form-control" @bind="_new.BaseUrl" placeholder="Boş bırakılırsa dokümandaki servers alanından alınır" />
+                <input class="form-control" maxlength="@ApiFieldRules.UrlMaxLength" @bind="_new.BaseUrl"
+                       placeholder="Boş bırakılırsa dokümandaki servers alanından alınır" />
 
                 <label>İzinli roller</label>
-                <input class="form-control" @bind="_new.AllowedRoles" placeholder="Boş bırakılırsa tüm roller görebilir" />
+                <input class="form-control" maxlength="@ApiFieldRules.AllowedRolesMaxLength" @bind="_new.AllowedRoles"
+                       placeholder="Boş bırakılırsa tüm roller görebilir" />
             </div>
 
             <div class="sd-actions">

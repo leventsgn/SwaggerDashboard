@@ -1,5 +1,6 @@
 using System.Text;
 using SwaggerDashboard.Application.Abstractions;
+using SwaggerDashboard.Application.Security;
 using SwaggerDashboard.Application.Dashboards;
 
 namespace SwaggerDashboard.Application.Execution;
@@ -62,6 +63,17 @@ public static class TargetRequestBuilder
             builder.Query = query;
         }
 
+        // A second URL with the credential blanked out. Everything that shows or stores the
+        // request uses this one: an API key placed in the query string is part of the address,
+        // so masking headers alone left it in the log table, on the admin screen and in the
+        // copy-paste snippet.
+        var safeBuilder = new UriBuilder(new Uri(baseUri, pathResult.Path));
+        var safeQuery = BuildQuery(request.QueryParameters, credential, maskCredential: true);
+        if (safeQuery.Length > 0)
+        {
+            safeBuilder.Query = safeQuery;
+        }
+
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var (name, value) in request.Headers)
@@ -84,6 +96,7 @@ public static class TargetRequestBuilder
         return new BuildResult(true, builder.Uri, operation.Method, headers, null)
         {
             CredentialHeaders = credentialHeaders,
+            SafeUri = safeBuilder.Uri,
         };
     }
 
@@ -126,7 +139,8 @@ public static class TargetRequestBuilder
 
     private static string BuildQuery(
         IReadOnlyCollection<KeyValuePair<string, string>> queryParameters,
-        ApiCredential? credential)
+        ApiCredential? credential,
+        bool maskCredential = false)
     {
         var parts = new List<string>();
 
@@ -145,7 +159,8 @@ public static class TargetRequestBuilder
             !string.IsNullOrWhiteSpace(credential.ParameterName) &&
             !string.IsNullOrWhiteSpace(credential.Secret))
         {
-            parts.Add($"{Uri.EscapeDataString(credential.ParameterName)}={Uri.EscapeDataString(credential.Secret)}");
+            var secret = maskCredential ? SensitiveDataMasker.Mask : credential.Secret;
+            parts.Add($"{Uri.EscapeDataString(credential.ParameterName)}={Uri.EscapeDataString(secret)}");
         }
 
         return string.Join("&", parts);
@@ -214,6 +229,12 @@ public static class TargetRequestBuilder
         /// crosses to another origin.
         /// </remarks>
         public List<string> CredentialHeaders { get; init; } = [];
+
+        /// <summary>
+        /// The same address with any credential in the query string replaced by a mask. Used
+        /// everywhere the request is shown or stored.
+        /// </summary>
+        public Uri? SafeUri { get; init; }
 
         public static BuildResult Fail(string error) =>
             new(false, null, string.Empty, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), error);

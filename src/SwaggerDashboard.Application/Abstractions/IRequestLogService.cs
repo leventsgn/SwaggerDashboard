@@ -19,6 +19,20 @@ public interface IRequestLogService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// One page of the log, plus how many rows match in total.
+    /// </summary>
+    /// <remarks>
+    /// The admin screen used to ask for the newest 200 and show them with nothing to say a
+    /// row 201 existed, so a busy day looked like a quiet one. The total is what lets the
+    /// screen admit there is more and offer to page through it.
+    /// </remarks>
+    Task<LogPage> GetPageAsync(
+        int? apiDefinitionId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The calls one user made to one endpoint, newest first, for the history list on the
     /// endpoint screen.
     /// </summary>
@@ -35,4 +49,10 @@ public interface IRequestLogService
 
     /// <summary>Deletes rows older than the configured retention window.</summary>
     Task<int> PurgeExpiredAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>One page of log rows and the size of the set it came from.</summary>
+public record LogPage(IReadOnlyList<ApiRequestLog> Rows, int TotalCount, int Skip)
+{
+    public bool HasMore => Skip + Rows.Count < TotalCount;
 }

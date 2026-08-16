@@ -40,6 +40,7 @@ public class SwaggerRefreshServiceTests : IDisposable
 
         _definitions = new ApiDefinitionService(
             _db, _documents, generator, hash, _cache, settings,
+            new ProvisioningRateLimiter(settings),
             NullLogger<ApiDefinitionService>.Instance);
 
         _refresh = new SwaggerRefreshService(

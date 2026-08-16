@@ -58,8 +58,16 @@ public static class AccountEndpoints
         .AllowAnonymous()
         .RequireRateLimiting(RateLimitPolicies.Login);
 
-        group.MapPost("/logout", async (HttpContext context) =>
+        // The token is bound as a form field on purpose. .NET validates antiforgery
+        // automatically for endpoints that bind a form, and this one used to bind nothing —
+        // so any third-party page could sign a visitor out with a cross-site POST. The
+        // parameter is unused; binding it is what turns the validation on.
+        group.MapPost("/logout", async (
+            HttpContext context,
+            [FromForm(Name = "__RequestVerificationToken")] string? antiforgeryToken) =>
         {
+            _ = antiforgeryToken;
+
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.Redirect("/login");
         });

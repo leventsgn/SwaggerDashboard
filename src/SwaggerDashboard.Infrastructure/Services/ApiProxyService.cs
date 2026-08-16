@@ -7,6 +7,7 @@ using SwaggerDashboard.Application.Abstractions;
 using SwaggerDashboard.Application.Configuration;
 using SwaggerDashboard.Application.Dashboards;
 using SwaggerDashboard.Application.Execution;
+using SwaggerDashboard.Application.Security;
 using SwaggerDashboard.Domain.Entities;
 using SwaggerDashboard.Infrastructure.Http;
 using SwaggerDashboard.Infrastructure.Identity;
@@ -182,9 +183,12 @@ public class ApiProxyService : IApiProxyService
             Success = guarded.IsCompleted && guarded.StatusCode is >= 200 and < 400,
             StatusCode = guarded.StatusCode,
             ReasonPhrase = guarded.ReasonPhrase,
-            RequestUrl = built.Uri.AbsoluteUri,
+            // The masked address and headers, never the ones that went on the wire: this
+            // response is rendered in the browser, stored in the log table and turned into a
+            // copy-paste snippet, and a credential must not survive any of those.
+            RequestUrl = (built.SafeUri ?? built.Uri).AbsoluteUri,
             RequestMethod = built.Method,
-            RequestHeaders = built.Headers,
+            RequestHeaders = MaskCredentialHeaders(built),
             RequestBody = bodyText,
             ResponseHeaders = guarded.Headers,
             ResponseBody = guarded.Content,
@@ -268,6 +272,36 @@ public class ApiProxyService : IApiProxyService
         "image/svg+xml" => ".svg",
         _ => ".bin",
     };
+
+    /// <summary>
+    /// Copies the outbound headers with the credential ones blanked out.
+    /// </summary>
+    /// <remarks>
+    /// Masking by header name alone missed the case that matters most: the API-key header is
+    /// named by the swagger document, so a target that calls it X-Auth-Token slipped past a
+    /// fixed list. The builder reports which headers it filled, so those are masked whatever
+    /// they are called.
+    /// </remarks>
+    private static Dictionary<string, string> MaskCredentialHeaders(TargetRequestBuilder.BuildResult built)
+    {
+        var masked = new Dictionary<string, string>(built.Headers, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in built.CredentialHeaders)
+        {
+            if (!masked.TryGetValue(name, out var value))
+            {
+                continue;
+            }
+
+            var space = value.IndexOf(' ');
+
+            masked[name] = space > 0 && space <= 10
+                ? string.Concat(value.AsSpan(0, space + 1), SensitiveDataMasker.Mask)
+                : SensitiveDataMasker.Mask;
+        }
+
+        return masked;
+    }
 
     /// <summary>
     /// Decides whether this caller may run this endpoint, and returns the refusal to report.

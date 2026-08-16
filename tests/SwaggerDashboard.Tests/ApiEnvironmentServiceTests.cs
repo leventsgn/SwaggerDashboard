@@ -165,6 +165,72 @@ public class ApiEnvironmentServiceTests : IDisposable
         Assert.Equal("https://test2.company.com/v1", (await _service.ListAsync(ApiId)).Single().BaseUrl);
     }
 
+    [Fact]
+    public async Task Concurrent_saves_leave_exactly_one_default()
+    {
+        // Each caller gets its own context, mirroring one scope per request. Both read the
+        // sibling list before either wrote, so both used to come out flagged as the default
+        // and the admin screen showed two.
+        await _service.AddAsync(ApiId, "Test", "https://test.company.com/v1", isDefault: true);
+
+        var tasks = Enumerable.Range(0, 4)
+            .Select(index => Task.Run(async () =>
+            {
+                var service = new ApiEnvironmentService(NewContext(), _validator);
+                await service.AddAsync(
+                    ApiId, $"Env{index}", $"https://env{index}.company.com/v1", isDefault: true);
+            }))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        var environments = await _service.ListAsync(ApiId);
+        Assert.Equal(5, environments.Count);
+        Assert.Single(environments.Where(e => e.IsDefault));
+    }
+
+    [Fact]
+    public async Task A_duplicate_name_that_slips_past_the_check_comes_back_as_a_message()
+    {
+        // The check and the save cannot be one atomic step across two application instances,
+        // so the unique index is the real arbiter. It used to surface as a DbUpdateException
+        // that tore down the circuit: the admin lost the page instead of reading why.
+        await _service.AddAsync(ApiId, "Test", "https://test.company.com/v1", isDefault: true);
+
+        var context = NewContext();
+        var service = new ApiEnvironmentService(context, _validator);
+
+        // Fires between the duplicate check and the insert, which is exactly the window a
+        // second instance writes into.
+        context.SavingChanges += (_, _) =>
+        {
+            using var other = NewContext();
+
+            if (other.ApiEnvironments.Any(e => e.Name == "Production"))
+            {
+                return;
+            }
+
+            other.ApiEnvironments.Add(new ApiEnvironment
+            {
+                ApiDefinitionId = ApiId,
+                Name = "Production",
+                BaseUrl = "https://api.company.com/v1",
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+            other.SaveChanges();
+        };
+
+        var result = await service.AddAsync(
+            ApiId, "Production", "https://other.company.com/v1", isDefault: false);
+
+        Assert.False(result.Success);
+        Assert.Contains("zaten var", result.Error);
+    }
+
+    private SwaggerDashboardDbContext NewContext() =>
+        new(new DbContextOptionsBuilder<SwaggerDashboardDbContext>().UseSqlite(_connection).Options);
+
     private sealed class StubValidator : IOutboundUrlValidator
     {
         public bool Allowed { get; set; } = true;

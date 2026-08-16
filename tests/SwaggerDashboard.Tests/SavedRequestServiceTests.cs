@@ -27,6 +27,18 @@ public class SavedRequestServiceTests : IDisposable
             new DbContextOptionsBuilder<SwaggerDashboardDbContext>().UseSqlite(_connection).Options);
         _db.Database.EnsureCreated();
 
+        // Saved requests belong to an API, so one has to exist for the foreign key to hold.
+        _db.ApiDefinitions.Add(new ApiDefinition
+        {
+            Id = ApiId,
+            Name = "Customer API",
+            TargetKey = "key",
+            BaseUrl = "https://api.company.com/v1",
+            SwaggerUrl = "https://api.company.com/swagger",
+            SwaggerUrlNormalized = "https://api.company.com/swagger/v1/swagger.json",
+        });
+        _db.SaveChanges();
+
         _service = new SavedRequestService(_db);
     }
 

@@ -115,10 +115,19 @@ public static class StartupExtensions
                 "SwaggerDashboard:Outbound:AllowPrivateNetworks yalnızca Development ortamında kullanılabilir.");
         }
 
-        if (options.Outbound.AllowedHostSuffixes.Count == 0)
+        // Counting the entries is not enough: the validator ignores blanks and entries that
+        // are only "*." , so a typo produced a deployment that started happily and could reach
+        // nothing at all. The guard asks the same question the validator does.
+        var usableSuffixes = options.Outbound.AllowedHostSuffixes
+            .Where(suffix => !string.IsNullOrWhiteSpace(suffix))
+            .Select(suffix => suffix.Trim().TrimStart('*', '.'))
+            .Count(suffix => suffix.Length > 0);
+
+        if (usableSuffixes == 0)
         {
             throw new InvalidOperationException(
-                "SwaggerDashboard:Outbound:AllowedHostSuffixes boş. Hedef API alan adlarını tanımlayın.");
+                "SwaggerDashboard:Outbound:AllowedHostSuffixes kullanılabilir bir alan adı içermiyor. " +
+                "Hedef API alan adlarını tanımlayın.");
         }
     }
 

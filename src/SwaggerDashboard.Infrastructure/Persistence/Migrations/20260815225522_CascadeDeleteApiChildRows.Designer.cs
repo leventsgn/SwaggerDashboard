@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SwaggerDashboard.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using SwaggerDashboard.Infrastructure.Persistence;
 namespace SwaggerDashboard.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SwaggerDashboardDbContext))]
-    partial class SwaggerDashboardDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260815225522_CascadeDeleteApiChildRows")]
+    partial class CascadeDeleteApiChildRows
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

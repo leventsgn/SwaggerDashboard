@@ -106,6 +106,31 @@ public class RequestLogService : IRequestLogService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<LogPage> GetPageAsync(
+        int? apiDefinitionId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _db.ApiRequestLogs.AsNoTracking();
+
+        if (apiDefinitionId is not null)
+        {
+            query = query.Where(l => l.ApiDefinitionId == apiDefinitionId);
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        skip = Math.Max(0, skip);
+
+        var rows = await query
+            .OrderByDescending(l => l.Id)
+            .Skip(skip)
+            .Take(Math.Clamp(take, 1, 500))
+            .ToListAsync(cancellationToken);
+
+        return new LogPage(rows, total, skip);
+    }
+
     public async Task<IReadOnlyList<ApiRequestLog>> GetForEndpointAsync(
         int apiDefinitionId,
         string endpointSlug,

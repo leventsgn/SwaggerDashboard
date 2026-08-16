@@ -160,6 +160,10 @@ public class SwaggerCheckServiceTests
             return Task.FromResult(list);
         }
 
+        public Task<IReadOnlyList<ApiDefinition>> ListVisibleAsync(
+            ResolveContext context, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("The scheduled check lists every active API, not a user's view.");
+
         public Task<ResolveResult> ResolveAsync(string routeTail, ResolveContext context, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

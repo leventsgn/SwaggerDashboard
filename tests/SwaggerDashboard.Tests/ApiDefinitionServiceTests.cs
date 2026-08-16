@@ -60,6 +60,7 @@ public class ApiDefinitionServiceTests : IDisposable
             _hashService,
             _cache,
             _settings,
+            new ProvisioningRateLimiter(_settings),
             NullLogger<ApiDefinitionService>.Instance);
     }
 
@@ -163,6 +164,102 @@ public class ApiDefinitionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task An_alias_resolves_whatever_case_it_is_typed_in()
+    {
+        _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
+
+        var registration = await _service.RegisterAsync(new RegisterApiRequest
+        {
+            SwaggerUrl = "https://api.company.com/swagger",
+            RouteName = "customer-api",
+        });
+        Assert.True(registration.Success, registration.Error);
+
+        var shouted = await _service.ResolveAsync("CUSTOMER-API", Developer);
+
+        Assert.True(shouted.IsSuccess, shouted.Error);
+        Assert.Equal(registration.Definition!.Id, shouted.Definition!.Id);
+    }
+
+    [Fact]
+    public async Task An_alias_taken_in_another_case_is_refused()
+    {
+        // The cache key has always been lowercased. Letting a second API claim "CUSTOMER-API"
+        // meant whichever spelling was visited first answered for both of them.
+        _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
+        _documents.Serve("https://api.other.com/swagger/v1/swagger.json", SampleDocuments.Minimal);
+
+        var first = await _service.RegisterAsync(new RegisterApiRequest
+        {
+            SwaggerUrl = "https://api.company.com/swagger",
+            RouteName = "customer-api",
+        });
+        Assert.True(first.Success, first.Error);
+
+        var second = await _service.RegisterAsync(new RegisterApiRequest
+        {
+            SwaggerUrl = "https://api.other.com/swagger",
+            RouteName = "CUSTOMER-API",
+        });
+
+        Assert.False(second.Success);
+        Assert.Contains("zaten kullanılıyor", second.Error);
+    }
+
+    [Fact]
+    public async Task An_over_long_field_is_refused_with_a_message_instead_of_reaching_the_column()
+    {
+        // SQL Server does not truncate, it throws, so the register screen failed with a
+        // database error rather than a message next to the field. SQLite accepts anything,
+        // which is why the mistake only ever appeared in production.
+        _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
+
+        var result = await _service.RegisterAsync(new RegisterApiRequest
+        {
+            SwaggerUrl = "https://api.company.com/swagger",
+            Name = new string('a', ApiFieldRules.NameMaxLength + 1),
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("en fazla 200 karakter", result.Error);
+
+        // The check has to happen before the document is fetched, not after.
+        Assert.Equal(0, _documents.FetchCount);
+    }
+
+    [Fact]
+    public async Task An_over_long_edit_comes_back_as_a_message_the_screen_can_show()
+    {
+        _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
+        var id = (await _service.ResolveAsync("api.company.com/swagger", Developer)).Definition!.Id;
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _service.UpdateMetadataAsync(new UpdateApiRequest
+            {
+                Id = id,
+                Name = "Customer API",
+                Description = new string('a', ApiFieldRules.DescriptionMaxLength + 1),
+            }));
+
+        Assert.Contains("en fazla 1000 karakter", error.Message);
+    }
+
+    [Fact]
+    public async Task A_title_longer_than_the_column_is_trimmed_rather_than_refused()
+    {
+        // Nobody registering the API can shorten someone else's document, so a long title is
+        // not a mistake to report back; it just has to fit.
+        _documents.Serve(
+            "https://api.company.com/swagger/v1/swagger.json",
+            SampleDocuments.Minimal.Replace("Tiny API", new string('u', 400)));
+
+        var result = await _service.ResolveAsync("api.company.com/swagger", Developer);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(ApiFieldRules.NameMaxLength, result.Definition!.Name.Length);
+    }
+
+    [Fact]
     public async Task A_reserved_alias_is_refused()
     {
         _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
@@ -217,6 +314,7 @@ public class ApiDefinitionServiceTests : IDisposable
                     _hashService,
                     _cache,
                     new StaticOptionsMonitor(new SwaggerDashboardOptions()),
+                    new ProvisioningRateLimiter(new StaticOptionsMonitor(new SwaggerDashboardOptions())),
                     NullLogger<ApiDefinitionService>.Instance);
 
                 return await service.ResolveAsync("api.company.com/swagger", Developer);
@@ -242,6 +340,45 @@ public class ApiDefinitionServiceTests : IDisposable
         Assert.Equal(result.Dashboard!.Operations.Count, endpoints.Count);
         Assert.Contains(endpoints, e => e.OperationId == "getCustomerById" && e.RequiresAuthentication);
         Assert.Contains(endpoints, e => e.OperationId == "deleteCustomer" && e.IsDeprecated);
+    }
+
+    [Fact]
+    public async Task Deleting_an_api_takes_its_saved_requests_favourites_and_logs_with_it()
+    {
+        // These three tables carry an ApiDefinitionId but had no relationship configured, so
+        // deleting the API left rows nothing could reach: unreachable from every screen, still
+        // counted by log retention, and inherited by whichever API next took the id.
+        _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
+        var definitionId = (await _service.ResolveAsync("api.company.com/swagger", Developer)).Definition!.Id;
+
+        _db.SavedRequests.Add(new SavedRequest
+        {
+            ApiDefinitionId = definitionId,
+            EndpointSlug = "get-customers",
+            UserId = "7",
+            Name = "Sayfa 2",
+            PayloadJson = "{}",
+        });
+        _db.FavoriteEndpoints.Add(new FavoriteEndpoint
+        {
+            ApiDefinitionId = definitionId,
+            EndpointSlug = "get-customers",
+            UserId = "7",
+        });
+        _db.ApiRequestLogs.Add(new ApiRequestLog
+        {
+            ApiDefinitionId = definitionId,
+            RequestUrl = "https://api.company.com/v1/customers",
+            HttpMethod = "GET",
+            ResponseStatusCode = 200,
+        });
+        await _db.SaveChangesAsync();
+
+        await _service.DeleteAsync(definitionId);
+
+        Assert.Empty(await _db.SavedRequests.ToListAsync());
+        Assert.Empty(await _db.FavoriteEndpoints.ToListAsync());
+        Assert.Empty(await _db.ApiRequestLogs.ToListAsync());
     }
 
     [Fact]
@@ -321,6 +458,55 @@ public class ApiDefinitionServiceTests : IDisposable
         Assert.True(reopened.IsSuccess, reopened.Error);
         Assert.Equal(registration.Dashboard!.Operations.Count, reopened.Dashboard!.Operations.Count);
         Assert.Equal(DashboardDocument.CurrentSchemaVersion, (await _db.ApiDefinitions.SingleAsync()).DashboardSchemaVersion);
+    }
+
+    [Fact]
+    public async Task The_listing_hides_an_api_whose_roles_exclude_the_caller()
+    {
+        // The dashboard was gated but the inventory was not, so an out-of-role visitor still
+        // read every API's name, description and internal swagger URL.
+        _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
+
+        var registration = await _service.RegisterAsync(new RegisterApiRequest
+        {
+            SwaggerUrl = "https://api.company.com/swagger",
+            AllowedRoles = Roles.Developer,
+            Actor = "admin",
+        });
+
+        Assert.True(registration.Success, registration.Error);
+
+        var developer = new ResolveContext("2", "dev", Roles.Developer, IsAuthenticated: true);
+        var tester = new ResolveContext("3", "test", Roles.Tester, IsAuthenticated: true);
+        var admin = new ResolveContext("1", "admin", Roles.Admin, IsAuthenticated: true);
+
+        Assert.Single(await _service.ListVisibleAsync(developer));
+        Assert.Empty(await _service.ListVisibleAsync(tester));
+
+        // An administrator sees everything, as on the dashboard itself.
+        Assert.Single(await _service.ListVisibleAsync(admin));
+    }
+
+    [Fact]
+    public async Task The_listing_is_empty_for_a_visitor_when_viewing_requires_a_sign_in()
+    {
+        _settings.CurrentValue.Access.RequireAuthenticationToView = true;
+
+        _documents.Serve("https://api.company.com/swagger/v1/swagger.json", SampleDocuments.CustomerApi());
+
+        await _service.RegisterAsync(new RegisterApiRequest
+        {
+            SwaggerUrl = "https://api.company.com/swagger",
+            Actor = "admin",
+        });
+
+        var anonymous = new ResolveContext(null, null, null, IsAuthenticated: false);
+
+        Assert.Empty(await _service.ListVisibleAsync(anonymous));
+        Assert.Single(await _service.ListVisibleAsync(
+            new ResolveContext("1", "admin", Roles.Admin, IsAuthenticated: true)));
+
+        _settings.CurrentValue.Access.RequireAuthenticationToView = false;
     }
 
     [Fact]

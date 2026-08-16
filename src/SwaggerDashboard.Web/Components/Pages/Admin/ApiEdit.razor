@@ -29,20 +29,20 @@
         <div class="sd-panel">
             <div class="sd-form-grid">
                 <label>Ad</label>
-                <input class="form-control" @bind="_name" />
+                <input class="form-control" maxlength="@ApiFieldRules.NameMaxLength" @bind="_name" />
 
                 <label>Açıklama</label>
-                <input class="form-control" @bind="_description" />
+                <input class="form-control" maxlength="@ApiFieldRules.DescriptionMaxLength" @bind="_description" />
 
                 <label>Route adı</label>
                 <input class="form-control" @bind="_routeName"
                        placeholder="Boş bırakılırsa yalnızca uzun adres kullanılır" />
 
                 <label>Taban adres</label>
-                <input class="form-control" @bind="_baseUrl" />
+                <input class="form-control" maxlength="@ApiFieldRules.UrlMaxLength" @bind="_baseUrl" />
 
                 <label>İzinli roller</label>
-                <input class="form-control" @bind="_allowedRoles"
+                <input class="form-control" maxlength="@ApiFieldRules.AllowedRolesMaxLength" @bind="_allowedRoles"
                        placeholder="Admin, Developer (boş = tümü)" />
             </div>
 

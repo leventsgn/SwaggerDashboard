@@ -81,7 +81,7 @@
     protected override async Task OnInitializedAsync()
     {
         _user = await CurrentUserAccessor.GetAsync();
-        _definitions = await DefinitionService.ListAsync(includeInactive: false);
+        _definitions = await DefinitionService.ListVisibleAsync(_user.ToResolveContext());
     }
 
     private void OnQuickKeyDown(KeyboardEventArgs args)

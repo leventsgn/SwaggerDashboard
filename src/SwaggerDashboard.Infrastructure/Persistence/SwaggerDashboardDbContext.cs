@@ -107,6 +107,17 @@ public class SwaggerDashboardDbContext : DbContext
 
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => new { e.ApiDefinitionId, e.CreatedAt });
+
+            // Deleting an API used to leave its log rows behind, pointing at an id nothing
+            // owns any more. They were invisible (every screen filters by API) but still
+            // counted against retention, and a later API reusing the id would inherit them.
+            // No ApiEndpointId relationship on purpose: that would be a second cascade path
+            // into this table, which SQL Server refuses, and keeping the id lets history
+            // survive an endpoint disappearing from the document.
+            entity.HasOne<ApiDefinition>()
+                .WithMany()
+                .HasForeignKey(e => e.ApiDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ApiEnvironment>(entity =>
@@ -125,6 +136,11 @@ public class SwaggerDashboardDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Note).HasMaxLength(1000);
             entity.HasIndex(e => new { e.ApiDefinitionId, e.EndpointSlug, e.UserId });
+
+            entity.HasOne<ApiDefinition>()
+                .WithMany()
+                .HasForeignKey(e => e.ApiDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<FavoriteEndpoint>(entity =>
@@ -133,6 +149,11 @@ public class SwaggerDashboardDbContext : DbContext
             entity.Property(e => e.EndpointSlug).HasMaxLength(160).IsRequired();
             entity.Property(e => e.UserId).HasMaxLength(128).IsRequired();
             entity.HasIndex(e => new { e.ApiDefinitionId, e.EndpointSlug, e.UserId }).IsUnique();
+
+            entity.HasOne<ApiDefinition>()
+                .WithMany()
+                .HasForeignKey(e => e.ApiDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<DashboardUser>(entity =>

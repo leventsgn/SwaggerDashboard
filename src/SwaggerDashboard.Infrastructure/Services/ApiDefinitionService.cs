@@ -41,6 +41,7 @@ public class ApiDefinitionService : IApiDefinitionService
     private readonly IHashService _hashService;
     private readonly IDashboardCache _cache;
     private readonly IOptionsMonitor<SwaggerDashboardOptions> _options;
+    private readonly ProvisioningRateLimiter _rateLimiter;
     private readonly ILogger<ApiDefinitionService> _logger;
 
     public ApiDefinitionService(
@@ -50,6 +51,7 @@ public class ApiDefinitionService : IApiDefinitionService
         IHashService hashService,
         IDashboardCache cache,
         IOptionsMonitor<SwaggerDashboardOptions> options,
+        ProvisioningRateLimiter rateLimiter,
         ILogger<ApiDefinitionService> logger)
     {
         _db = db;
@@ -58,6 +60,7 @@ public class ApiDefinitionService : IApiDefinitionService
         _hashService = hashService;
         _cache = cache;
         _options = options;
+        _rateLimiter = rateLimiter;
         _logger = logger;
     }
 
@@ -233,6 +236,16 @@ public class ApiDefinitionService : IApiDefinitionService
                 "Bu swagger adresi kayıtlı değil ve yeni API kaydı oluşturma yetkiniz yok.");
         }
 
+        // The cap is checked after the role gate and before any outbound work, so a refused
+        // attempt costs nothing. It was written for exactly this path and never called from
+        // it, which left MaxProvisionsPerUserPerHour with no effect at any value.
+        if (!_rateLimiter.TryAcquire(context.UserId ?? context.UserName ?? "bilinmeyen", out var retryAfterSeconds))
+        {
+            return ResolveResult.Failure(
+                ResolveStatus.ProvisioningForbidden,
+                $"Saatlik yeni API kaydı sınırına ulaştınız. {Math.Max(1, retryAfterSeconds / 60)} dakika sonra tekrar deneyin.");
+        }
+
         // One provisioning at a time per address, so two users opening the same cold URL
         // do not both download and both insert.
         var gate = ProvisionLocks.GetOrAdd(requestKey, _ => new SemaphoreSlim(1, 1));
@@ -304,6 +317,14 @@ public class ApiDefinitionService : IApiDefinitionService
             return RegistrationResult.Fail(urlError);
         }
 
+        var fieldError = ApiFieldRules.Validate(
+            request.Name, request.Description, request.SwaggerUrl, request.BaseUrl, request.AllowedRoles);
+
+        if (fieldError is not null)
+        {
+            return RegistrationResult.Fail(fieldError);
+        }
+
         if (!string.IsNullOrWhiteSpace(request.RouteName))
         {
             if (!ReservedRoutes.IsValidAlias(request.RouteName, out var aliasError))
@@ -311,8 +332,11 @@ public class ApiDefinitionService : IApiDefinitionService
                 return RegistrationResult.Fail(aliasError!);
             }
 
+            // Same lowered comparison the lookup uses, so an alias cannot be registered in a
+            // spelling that will never resolve to it.
+            var lowered = request.RouteName.Trim().ToLowerInvariant();
             var aliasTaken = await _db.ApiDefinitions
-                .AnyAsync(a => a.RouteName == request.RouteName, cancellationToken);
+                .AnyAsync(a => a.RouteName!.ToLower() == lowered, cancellationToken);
 
             if (aliasTaken)
             {
@@ -324,6 +348,14 @@ public class ApiDefinitionService : IApiDefinitionService
         if (!fetch.Success || fetch.DocumentUrl is null || fetch.Content is null)
         {
             return RegistrationResult.Fail(fetch.Error!);
+        }
+
+        // Redirects can land on an address longer than the column, and truncating it would
+        // store a document URL that no later refresh could fetch.
+        if (fetch.DocumentUrl.AbsoluteUri.Length > ApiFieldRules.UrlMaxLength)
+        {
+            return RegistrationResult.Fail(
+                $"Dokümanın çözümlenen adresi çok uzun (en fazla {ApiFieldRules.UrlMaxLength} karakter).");
         }
 
         // The canonical key comes from the resolved document URL so that /swagger and
@@ -372,11 +404,16 @@ public class ApiDefinitionService : IApiDefinitionService
         var dashboard = generation.Document;
         var now = DateTimeOffset.UtcNow;
 
+        // The request fields were checked above and are reported back to the user when they
+        // are too long. The title comes from the document instead, where a long value is
+        // nobody's mistake to correct, so it is trimmed to fit.
         var definition = new ApiDefinition
         {
-            Name = string.IsNullOrWhiteSpace(request.Name) ? dashboard.Title : request.Name,
-            Description = request.Description ?? Truncate(dashboard.Description, 1000),
-            RouteName = string.IsNullOrWhiteSpace(request.RouteName) ? null : request.RouteName,
+            Name = string.IsNullOrWhiteSpace(request.Name)
+                ? Truncate(dashboard.Title, ApiFieldRules.NameMaxLength)!
+                : request.Name,
+            Description = request.Description ?? Truncate(dashboard.Description, ApiFieldRules.DescriptionMaxLength),
+            RouteName = string.IsNullOrWhiteSpace(request.RouteName) ? null : request.RouteName.Trim(),
             TargetKey = targetKey,
             SwaggerUrl = request.SwaggerUrl,
             SwaggerUrlNormalized = documentUrl.AbsoluteUri,
@@ -483,10 +520,42 @@ public class ApiDefinitionService : IApiDefinitionService
         return await query.OrderBy(a => a.Name).ToListAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// The APIs this caller is allowed to see.
+    /// </summary>
+    /// <remarks>
+    /// The dashboard itself was gated but the inventory was not, so an out-of-role or
+    /// anonymous visitor still read every registered API's name, description and internal
+    /// swagger URL — the reconnaissance the two settings exist to prevent. The listing applies
+    /// the same two rules the dashboard does: the view-requires-authentication switch, and the
+    /// definition's allowed roles.
+    /// </remarks>
+    public async Task<IReadOnlyList<ApiDefinition>> ListVisibleAsync(
+        ResolveContext context,
+        CancellationToken cancellationToken = default)
+    {
+        if (_options.CurrentValue.Access.RequireAuthenticationToView && !context.IsAuthenticated)
+        {
+            return [];
+        }
+
+        var definitions = await ListAsync(includeInactive: false, cancellationToken);
+
+        return definitions.Where(d => IsVisibleTo(d, context.Role)).ToList();
+    }
+
     public async Task UpdateMetadataAsync(UpdateApiRequest request, CancellationToken cancellationToken = default)
     {
         var definition = await _db.ApiDefinitions.FirstOrDefaultAsync(a => a.Id == request.Id, cancellationToken)
             ?? throw new InvalidOperationException($"API tanımı bulunamadı: {request.Id}");
+
+        var fieldError = ApiFieldRules.Validate(
+            request.Name, request.Description, null, request.BaseUrl, request.AllowedRoles);
+
+        if (fieldError is not null)
+        {
+            throw new InvalidOperationException(fieldError);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.Name))
         {
@@ -512,8 +581,11 @@ public class ApiDefinitionService : IApiDefinitionService
                     throw new InvalidOperationException(aliasError);
                 }
 
+                var loweredAlias = newAlias.ToLowerInvariant();
                 var taken = await _db.ApiDefinitions
-                    .AnyAsync(a => a.RouteName == newAlias && a.Id != definition.Id, cancellationToken);
+                    .AnyAsync(
+                        a => a.RouteName!.ToLower() == loweredAlias && a.Id != definition.Id,
+                        cancellationToken);
 
                 if (taken)
                 {
@@ -617,11 +689,23 @@ public class ApiDefinitionService : IApiDefinitionService
     }
 
     /// <summary>Resolves the optional short alias, e.g. /customer-api.</summary>
-    private async Task<ApiDefinition?> FindByRouteNameAsync(string routeName, CancellationToken cancellationToken) =>
-        await LookupAsync(
-            "route:" + routeName.ToLowerInvariant(),
-            () => _db.ApiDefinitions.FirstOrDefaultAsync(a => a.RouteName == routeName, cancellationToken),
+    /// <remarks>
+    /// The comparison is lowercased on both sides on purpose. The cache key has always been
+    /// lowercased, so a case sensitive database (SQLite is, SQL Server's default collation is
+    /// not) made the two disagree: whichever spelling was visited first got cached under the
+    /// lowered key and then answered for every other spelling, including one belonging to a
+    /// different API. Deciding the case rule here rather than leaving it to the provider keeps
+    /// the alias namespace the same on every database.
+    /// </remarks>
+    private async Task<ApiDefinition?> FindByRouteNameAsync(string routeName, CancellationToken cancellationToken)
+    {
+        var lowered = routeName.ToLowerInvariant();
+
+        return await LookupAsync(
+            "route:" + lowered,
+            () => _db.ApiDefinitions.FirstOrDefaultAsync(a => a.RouteName!.ToLower() == lowered, cancellationToken),
             cancellationToken);
+    }
 
     /// <summary>
     /// Resolves any address that has been seen before, whether it is the document URL, the

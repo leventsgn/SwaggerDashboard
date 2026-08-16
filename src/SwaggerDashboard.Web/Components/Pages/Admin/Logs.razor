@@ -1,8 +1,10 @@
 @page "/admin/logs"
 @rendermode InteractiveServer
 @attribute [Authorize(Roles = Roles.Admin)]
+@using SwaggerDashboard.Infrastructure.Identity
 @inject IRequestLogService LogService
 @inject IApiDefinitionService DefinitionService
+@inject IUserService UserService
 
 <PageTitle>İstek logları - Swagger Dashboard</PageTitle>
 
@@ -17,20 +19,30 @@
                     <option value="@definition.Id">@definition.Name</option>
                 }
             </select>
+            <select class="form-select form-select-sm" value="@_pageSize" @onchange="OnPageSizeChanged">
+                @foreach (var size in PageSizes)
+                {
+                    <option value="@size">@size satır</option>
+                }
+            </select>
             <button class="btn btn-sm btn-outline-secondary" @onclick="ReloadAsync">Yenile</button>
         </div>
     </div>
 
-    @if (_logs is null)
+    @if (_page is null)
     {
         <p class="text-secondary">Yükleniyor...</p>
     }
-    else if (_logs.Count == 0)
+    else if (_page.Rows.Count == 0)
     {
-        <p class="text-secondary">Kayıt yok.</p>
+        <p class="text-secondary">@(_page.TotalCount == 0 ? "Kayıt yok." : "Bu sayfada kayıt yok.")</p>
     }
     else
     {
+        <p class="text-secondary small">
+            @(_page.Skip + 1)–@(_page.Skip + _page.Rows.Count) / toplam @_page.TotalCount kayıt
+        </p>
+
         <div class="sd-panel sd-panel-table">
         <table class="table table-sm sd-table">
             <thead>
@@ -46,11 +58,11 @@
             </tr>
             </thead>
             <tbody>
-            @foreach (var log in _logs)
+            @foreach (var log in _page.Rows)
             {
                 <tr class="@(log.IsSuccess ? null : "table-warning")">
                     <td>@log.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
-                    <td>@(log.UserId ?? "-")</td>
+                    <td>@UserLabel(log.UserId)</td>
                     <td>@log.HttpMethod</td>
                     <td class="sd-break">@log.RequestUrl</td>
                     <td>@(log.ResponseStatusCode == 0 ? "hata" : log.ResponseStatusCode.ToString())</td>
@@ -105,31 +117,95 @@
             </tbody>
         </table>
         </div>
+
+        <div class="sd-log-pager">
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_page.Skip == 0)"
+                    @onclick="PreviousPageAsync">
+                Önceki
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(!_page.HasMore)"
+                    @onclick="NextPageAsync">
+                Sonraki
+            </button>
+        </div>
     }
 </div>
 
 @code {
-    private IReadOnlyList<ApiRequestLog>? _logs;
+    private static readonly int[] PageSizes = [50, 100, 200, 500];
+
+    private LogPage? _page;
     private IReadOnlyList<ApiDefinition> _definitions = [];
+
+    /// <summary>User id to display name, so the table names people rather than ids.</summary>
+    private Dictionary<string, string> _userNames = new(StringComparer.Ordinal);
+
     private string _apiFilter = string.Empty;
+    private int _pageSize = 100;
+    private int _skip;
     private long? _expanded;
 
     protected override async Task OnInitializedAsync()
     {
         _definitions = await DefinitionService.ListAsync(includeInactive: true);
+
+        _userNames = (await UserService.ListAsync())
+            .ToDictionary(
+                u => u.Id.ToString(),
+                u => string.IsNullOrWhiteSpace(u.DisplayName) ? u.UserName : $"{u.DisplayName} ({u.UserName})",
+                StringComparer.Ordinal);
+
         await ReloadAsync();
     }
 
     private async Task OnFilterChanged(ChangeEventArgs args)
     {
         _apiFilter = args.Value?.ToString() ?? string.Empty;
+        _skip = 0;
+        await ReloadAsync();
+    }
+
+    private async Task OnPageSizeChanged(ChangeEventArgs args)
+    {
+        _pageSize = int.TryParse(args.Value?.ToString(), out var parsed) ? parsed : 100;
+        _skip = 0;
+        await ReloadAsync();
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        _skip = Math.Max(0, _skip - _pageSize);
+        await ReloadAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        _skip += _pageSize;
         await ReloadAsync();
     }
 
     private async Task ReloadAsync()
     {
         int? apiId = int.TryParse(_apiFilter, out var parsed) ? parsed : null;
-        _logs = await LogService.GetRecentAsync(apiId, 200);
+        _page = await LogService.GetPageAsync(apiId, _skip, _pageSize);
+
+        // Rows can be purged between two visits, which would otherwise leave the screen on a
+        // page past the end of the list with no way back except the filter.
+        if (_page.Rows.Count == 0 && _skip > 0)
+        {
+            _skip = 0;
+            _page = await LogService.GetPageAsync(apiId, 0, _pageSize);
+        }
+
         _expanded = null;
     }
+
+    /// <summary>
+    /// The name behind a logged user id. Ids of deleted accounts have no name left, so they
+    /// are shown as they are rather than as a blank cell.
+    /// </summary>
+    private string UserLabel(string? userId) =>
+        userId is null
+            ? "-"
+            : _userNames.TryGetValue(userId, out var name) ? name : userId;
 }

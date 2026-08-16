@@ -48,7 +48,12 @@ public class UserService : IUserService
         string password,
         CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.UserName == userName, cancellationToken);
+        // Lowered on both sides so a name means the same account on every database. SQL
+        // Server's default collation ignores case and SQLite's does not, which let a SQLite
+        // deployment hold "admin" and "Admin" as two separate accounts, and made whether
+        // "Admin" could sign in depend on which database the platform happened to run on.
+        var lowered = userName.Trim().ToLowerInvariant();
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.UserName.ToLower() == lowered, cancellationToken);
 
         if (user is null || !user.IsActive)
         {
@@ -83,9 +88,16 @@ public class UserService : IUserService
         string? displayName,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(userName))
+        userName = userName?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrEmpty(userName))
         {
             throw new InvalidOperationException("Kullanıcı adı boş olamaz.");
+        }
+
+        if (userName.Length > 128)
+        {
+            throw new InvalidOperationException("Kullanıcı adı en fazla 128 karakter olabilir.");
         }
 
         if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
@@ -98,7 +110,11 @@ public class UserService : IUserService
             throw new InvalidOperationException($"Geçersiz rol: {role}");
         }
 
-        if (await _db.Users.AnyAsync(u => u.UserName == userName, cancellationToken))
+        // Same lowered comparison sign-in uses, so an account cannot be created under a
+        // spelling that would then sign in as somebody else.
+        var lowered = userName.ToLowerInvariant();
+
+        if (await _db.Users.AnyAsync(u => u.UserName.ToLower() == lowered, cancellationToken))
         {
             throw new InvalidOperationException($"'{userName}' kullanıcı adı zaten var.");
         }

@@ -25,6 +25,12 @@ public interface IApiDefinitionService
 
     Task<IReadOnlyList<ApiDefinition>> ListAsync(bool includeInactive, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The active APIs a caller may see, filtered by the same rules that gate a dashboard.
+    /// </summary>
+    Task<IReadOnlyList<ApiDefinition>> ListVisibleAsync(
+        ResolveContext context, CancellationToken cancellationToken = default);
+
     Task<RegistrationResult> RegisterAsync(RegisterApiRequest request, CancellationToken cancellationToken = default);
 
     Task UpdateMetadataAsync(UpdateApiRequest request, CancellationToken cancellationToken = default);
