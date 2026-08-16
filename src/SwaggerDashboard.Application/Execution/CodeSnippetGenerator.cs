@@ -18,7 +18,7 @@ public static class CodeSnippetGenerator
         var builder = new StringBuilder();
         builder.Append("curl -X ").Append(call.Method).Append(" \\\n  '").Append(call.Url).Append('\'');
 
-        foreach (var (name, value) in call.Headers)
+        foreach (var (name, value) in HeadersToEmit(call))
         {
             builder.Append(" \\\n  -H '").Append(name).Append(": ").Append(Redact(name, value)).Append('\'');
         }
@@ -67,19 +67,27 @@ public static class CodeSnippetGenerator
         builder.AppendLine($"const response = await fetch('{call.Url}', {{");
         builder.AppendLine($"  method: '{call.Method}',");
 
-        if (call.Headers.Count > 0)
+        var headers = HeadersToEmit(call);
+
+        if (headers.Count > 0)
         {
             builder.AppendLine("  headers: {");
-            var headerLines = call.Headers
+            var headerLines = headers
                 .Select(h => $"    '{h.Key}': '{Redact(h.Key, h.Value)}'")
                 .ToList();
             builder.AppendLine(string.Join(",\n", headerLines));
-            builder.AppendLine(call.Body is null ? "  }" : "  },");
+            builder.AppendLine(string.IsNullOrEmpty(call.Body) ? "  }" : "  },");
         }
 
         if (!string.IsNullOrEmpty(call.Body))
         {
-            var escaped = call.Body.Replace("\\", "\\\\").Replace("`", "\\`");
+            // The body goes into a template literal, so a backslash, a backtick or a ${ in it
+            // would otherwise change what the snippet sends.
+            var escaped = call.Body
+                .Replace("\\", "\\\\")
+                .Replace("`", "\\`")
+                .Replace("${", "\\${");
+
             builder.AppendLine($"  body: `{escaped}`");
         }
 
@@ -88,6 +96,32 @@ public static class CodeSnippetGenerator
         builder.Append("console.log(await response.text());");
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// The headers the snippet has to carry, including the content type.
+    /// </summary>
+    /// <remarks>
+    /// The request builder keeps the content type out of the header dictionary because the
+    /// HTTP client sets it from the body it is given. A snippet has no such body object, so
+    /// copying only the dictionary produced a curl or fetch call that posted JSON with no
+    /// Content-Type — which most APIs answer with a 415 or parse as form data. The type is
+    /// added here rather than in the builder so the outbound request keeps setting it the one
+    /// way that stays consistent with the encoded body.
+    /// </remarks>
+    private static List<KeyValuePair<string, string>> HeadersToEmit(ExecutedCall call)
+    {
+        var headers = call.Headers.ToList();
+
+        if (string.IsNullOrEmpty(call.Body) ||
+            string.IsNullOrWhiteSpace(call.ContentType) ||
+            headers.Any(h => h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)))
+        {
+            return headers;
+        }
+
+        headers.Insert(0, new KeyValuePair<string, string>("Content-Type", call.ContentType));
+        return headers;
     }
 
     private static string Redact(string headerName, string value)

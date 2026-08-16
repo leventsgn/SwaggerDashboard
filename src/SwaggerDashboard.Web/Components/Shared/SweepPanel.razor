@@ -91,7 +91,7 @@
                     <td class="sd-break"><code>@result.Path</code></td>
                     <td>@StatusText(result)</td>
                     <td class="text-end">@(result.Outcome == SweepOutcome.Skipped ? "—" : $"{result.DurationMilliseconds} ms")</td>
-                    <td class="text-end">@(result.Outcome == SweepOutcome.Skipped ? "—" : $"{result.ContentLength} B")</td>
+                    <td class="text-end">@(result.Outcome == SweepOutcome.Skipped ? "—" : ByteSize.Format(result.ContentLength))</td>
                     <td class="sd-break small text-secondary">@result.Message</td>
                 </tr>
             }

@@ -119,7 +119,7 @@
                         <ul class="small mt-1 mb-0">
                             @foreach (var file in _files)
                             {
-                                <li>@file.FileName (@file.Content.Length bayt)</li>
+                                <li>@file.FileName (@ByteSize.Format(file.Content.Length))</li>
                             }
                         </ul>
                     }
@@ -560,6 +560,12 @@
 
             BuildForm(fill: false);
             SelectContentType(payload.ContentType);
+
+            // Cleared after the content type switch, which builds a fresh body node: without
+            // this the fields the stored request does not mention keep showing the schema's
+            // examples, as if the user had entered them.
+            ClearFields();
+
             RequestComposer.ApplyPayload(payload, _parameterNodes, _bodyNode);
             OnFormChanged();
 
@@ -653,6 +659,12 @@
 
             BuildForm(fill: false);
             SelectContentType(payload.ContentType);
+
+            // Cleared after the content type switch, which builds a fresh body node: without
+            // this the fields the stored request does not mention keep showing the schema's
+            // examples, as if the user had entered them.
+            ClearFields();
+
             RequestComposer.ApplyPayload(payload, _parameterNodes, _bodyNode);
             OnFormChanged();
 
@@ -755,7 +767,34 @@
     private void ResetForm()
     {
         BuildForm(fill: false);
+        ClearFields();
+
         _sampleNote = "Alanlar temizlendi. Yeniden doldurmak için \"Örnek verilerle doldur\" kullanın.";
+    }
+
+    /// <summary>
+    /// Empties every field of the form as it currently stands.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilding the nodes does not do this: construction re-reads the schema's default and
+    /// example, so "Alanları temizle" handed back a form that still had values in it, and
+    /// loading a saved request or a past call left the fields it did not mention showing
+    /// examples the user never chose. Clearing runs after the nodes exist, which is also why
+    /// it has to come after any content type switch — that switch builds a new body node.
+    /// </remarks>
+    private void ClearFields()
+    {
+        foreach (var node in _parameterNodes.Values)
+        {
+            node.Clear();
+        }
+
+        _bodyNode?.Clear();
+
+        _rawBody = _bodyNode?.ToJsonString() ?? string.Empty;
+        _rawParseError = null;
+        _validationError = null;
+        _files.Clear();
     }
 
     private static string ParameterKey(DashboardParameter parameter) =>

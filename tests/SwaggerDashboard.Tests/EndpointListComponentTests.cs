@@ -87,16 +87,33 @@ public class EndpointListComponentTests : TestContext
         Assert.Equal(["/customers"], Paths(component));
     }
 
-    [Fact]
-    public void Search_ignores_case_including_the_turkish_dotted_i()
+    [Theory]
+    [InlineData("istek")]
+    [InlineData("İSTEK")]
+    [InlineData("İstek")]
+    [InlineData("ıstek")]
+    [InlineData("ISTEK")]
+    public void Search_finds_a_turkish_word_in_any_spelling_of_the_i_family(string term)
     {
-        // "İSTEK" lowercased with the invariant rules is not "istek", so a naive comparison
-        // drops matches a Turkish user expects to find.
-        var component = Render(Dashboard(Operation("GET", "/istekler", summary: "İstek listesi")));
+        // Turkish has four letters where English has two, and ordinal case folding maps
+        // neither U+0130 nor U+0131 onto "i" — so typing the word the way it is actually
+        // written on a Turkish keyboard returned nothing at all.
+        var component = Render(Dashboard(Operation("GET", "/queue", summary: "İstek listesi")));
 
-        component.Find(".sd-search").Input("istek");
+        component.Find(".sd-search").Input(term);
 
         Assert.Single(Paths(component));
+    }
+
+    [Fact]
+    public void Search_still_rejects_a_term_that_is_not_there()
+    {
+        // The fold is loose on purpose; it must not become "matches everything".
+        var component = Render(Dashboard(Operation("GET", "/queue", summary: "İstek listesi")));
+
+        component.Find(".sd-search").Input("ödeme");
+
+        Assert.Empty(Paths(component));
     }
 
     [Fact]

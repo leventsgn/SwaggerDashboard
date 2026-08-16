@@ -27,7 +27,7 @@
                 @Response.ReasonPhrase
             </span>
             <span class="sd-timing">@Response.DurationMilliseconds ms</span>
-            <span class="sd-size">@FormatSize(Response.ContentLength)</span>
+            <span class="sd-size">@ByteSize.Format(Response.ContentLength)</span>
         </div>
 
         @if (Response.Error is not null)
@@ -56,7 +56,7 @@
                             {
                                 <a class="btn btn-sm btn-outline-primary"
                                    href="/download/@Response.DownloadToken" download="@Response.FileName">
-                                    @Response.FileName indir (@FormatSize(Response.ContentLength))
+                                    @Response.FileName indir (@ByteSize.Format(Response.ContentLength))
                                 </a>
                                 <p class="small text-secondary mt-2 mb-0">
                                     Bağlantı tek kullanımlıktır ve 10 dakika sonra düşer.
@@ -136,7 +136,7 @@
                         <tr><th>Başlangıç</th><td>@Response.StartedAt.ToLocalTime().ToString("HH:mm:ss.fff")</td></tr>
                         <tr><th>Bitiş</th><td>@Response.CompletedAt.ToLocalTime().ToString("HH:mm:ss.fff")</td></tr>
                         <tr><th>Süre</th><td>@Response.DurationMilliseconds ms</td></tr>
-                        <tr><th>Boyut</th><td>@FormatSize(Response.ContentLength)</td></tr>
+                        <tr><th>Boyut</th><td>@ByteSize.Format(Response.ContentLength)</td></tr>
                         <tr><th>Content-Type</th><td>@Response.ContentType</td></tr>
                         <tr><th>Kesildi mi</th><td>@(Response.Truncated ? "Evet, boyut sınırı aşıldı" : "Hayır")</td></tr>
                         </tbody>

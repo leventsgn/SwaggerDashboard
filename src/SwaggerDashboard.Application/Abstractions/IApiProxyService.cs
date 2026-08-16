@@ -66,6 +66,16 @@ public record ProxyResponse
 
     public string? RequestBody { get; init; }
 
+    /// <summary>
+    /// The content type the body was sent as.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from <see cref="ContentType"/>, which describes the response. The generated
+    /// snippets need the request side, and reading the response type instead produced code
+    /// that posted a JSON body labelled with whatever the target happened to answer with.
+    /// </remarks>
+    public string? RequestContentType { get; init; }
+
     public Dictionary<string, string> ResponseHeaders { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
     public string? ResponseBody { get; init; }

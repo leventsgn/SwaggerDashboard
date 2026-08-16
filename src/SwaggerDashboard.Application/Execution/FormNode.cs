@@ -195,6 +195,27 @@ public class FormNode
         SetIncluded(true);
     }
 
+    /// <summary>
+    /// Empties the whole subtree back to "nothing entered".
+    /// </summary>
+    /// <remarks>
+    /// Rebuilding the nodes is not the same thing: a fresh node re-reads the schema's default
+    /// and example, so "Alanları temizle" handed the user a form that still had values in it.
+    /// Clearing is what the button actually promises, and it is separate from construction so
+    /// that opening an endpoint keeps its head start.
+    /// </remarks>
+    public void Clear()
+    {
+        Value = string.Empty;
+        Included = Required;
+        Items.Clear();
+
+        foreach (var child in Children)
+        {
+            child.Clear();
+        }
+    }
+
     public void AddItem()
     {
         var itemSchema = EffectiveSchema.Items ?? new FieldSchema();

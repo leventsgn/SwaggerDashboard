@@ -129,7 +129,7 @@ public class ApiProxyService : IApiProxyService
         var startedAt = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
 
-        var (bodyText, contentFactory) = BuildContent(request);
+        var (bodyText, requestMediaType, contentFactory) = BuildContent(request);
 
         var guarded = await _sender.SendAsync(
             built.Uri,
@@ -190,6 +190,7 @@ public class ApiProxyService : IApiProxyService
             RequestMethod = built.Method,
             RequestHeaders = MaskCredentialHeaders(built),
             RequestBody = bodyText,
+            RequestContentType = requestMediaType,
             ResponseHeaders = guarded.Headers,
             ResponseBody = guarded.Content,
             IsBinary = isBinary,
@@ -353,7 +354,8 @@ public class ApiProxyService : IApiProxyService
     /// x-www-form-urlencoded — both of which the target rejects for reasons the user cannot
     /// see from the form.
     /// </remarks>
-    private static (string? BodyText, Func<HttpContent?> Factory) BuildContent(ProxyRequest request)
+    private static (string? BodyText, string? MediaType, Func<HttpContent?> Factory) BuildContent(
+        ProxyRequest request)
     {
         var declared = string.IsNullOrWhiteSpace(request.ContentType)
             ? "application/json"
@@ -368,7 +370,9 @@ public class ApiProxyService : IApiProxyService
                 request.FormFields.Select(f => $"{f.Key}={f.Value}")
                     .Concat(request.Files.Select(f => $"{f.FieldName}=@{f.FileName}")));
 
-            return (description, () =>
+            // No media type reported: multipart carries a generated boundary, and a snippet
+            // that named the type without it would describe a request the target cannot parse.
+            return (description, null, () =>
             {
                 var content = new MultipartFormDataContent();
 
@@ -393,19 +397,17 @@ public class ApiProxyService : IApiProxyService
             var encoded = string.Join("&", request.FormFields.Select(f =>
                 $"{Uri.EscapeDataString(f.Key)}={Uri.EscapeDataString(f.Value ?? string.Empty)}"));
 
-            return (encoded, () => new StringContent(
+            return (encoded, "application/x-www-form-urlencoded", () => new StringContent(
                 encoded, Encoding.UTF8, "application/x-www-form-urlencoded"));
         }
 
         if (string.IsNullOrEmpty(request.Body))
         {
-            return (null, () => null);
+            return (null, null, () => null);
         }
 
-        var contentType = declared;
+        var mediaType = declared.Split(';')[0].Trim();
 
-        var mediaType = contentType.Split(';')[0].Trim();
-
-        return (request.Body, () => new StringContent(request.Body, Encoding.UTF8, mediaType));
+        return (request.Body, mediaType, () => new StringContent(request.Body, Encoding.UTF8, mediaType));
     }
 }

@@ -234,6 +234,71 @@ public class FormNodeTests
     }
 
     [Fact]
+    public void Clearing_empties_the_defaults_and_examples_a_fresh_node_starts_with()
+    {
+        // "Alanları temizle" rebuilt the tree, and construction re-reads the schema, so the
+        // cleared form came back with exactly the values the user asked to be rid of.
+        var schema = Object(
+            new FieldProperty
+            {
+                Name = "page",
+                Required = false,
+                Schema = new FieldSchema { Type = SchemaTypes.Integer, Default = "1" },
+            },
+            new FieldProperty
+            {
+                Name = "city",
+                Required = false,
+                Schema = new FieldSchema { Type = SchemaTypes.String, Example = "Ankara" },
+            });
+
+        var node = new FormNode(schema, null, required: true);
+
+        Assert.Equal("1", node.Children[0].Value);
+        Assert.Equal("Ankara", node.Children[1].Value);
+
+        node.Clear();
+
+        Assert.All(node.Children, child => Assert.Equal(string.Empty, child.Value));
+        Assert.All(node.Children, child => Assert.False(child.Included));
+
+        // Nothing left to send: an emptied optional field must not reappear in the body.
+        Assert.Equal("{}", node.ToJsonString());
+    }
+
+    [Fact]
+    public void Clearing_keeps_a_required_field_ticked_but_empty()
+    {
+        // A required field cannot be opted out of, so clearing empties the value without
+        // pretending the field is gone.
+        var node = new FormNode(Object(Property("name", SchemaTypes.String, required: true)));
+        node.Children[0].Value = "Ada";
+
+        node.Clear();
+
+        Assert.Equal(string.Empty, node.Children[0].Value);
+        Assert.True(node.Children[0].Included);
+    }
+
+    [Fact]
+    public void Clearing_drops_the_rows_added_to_an_array()
+    {
+        var schema = new FieldSchema
+        {
+            Type = SchemaTypes.Array,
+            Items = new FieldSchema { Type = SchemaTypes.String },
+        };
+
+        var node = new FormNode(schema, "tags");
+        node.AddItem();
+        node.AddItem();
+
+        node.Clear();
+
+        Assert.Empty(node.Items);
+    }
+
+    [Fact]
     public void Writes_non_ascii_text_as_itself_rather_than_as_escape_sequences()
     {
         var node = new FormNode(Object(Property("name", SchemaTypes.String, required: true)));

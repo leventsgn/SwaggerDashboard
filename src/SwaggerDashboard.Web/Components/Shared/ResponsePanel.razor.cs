@@ -160,7 +160,7 @@ public partial class ResponsePanel : IDisposable
                 Response.RequestUrl,
                 Response.RequestHeaders,
                 Response.RequestBody,
-                Response.ContentType);
+                Response.RequestContentType);
 
             return _codeLanguage switch
             {
@@ -201,13 +201,6 @@ public partial class ResponsePanel : IDisposable
         >= 300 and < 400 => "s-redirect",
         >= 400 and < 500 => "s-client",
         _ => "s-server",
-    };
-
-    private static string FormatSize(long bytes) => bytes switch
-    {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
-        _ => $"{bytes / (1024.0 * 1024.0):0.##} MB",
     };
 
     public void Dispose() => _jsonDocument?.Dispose();

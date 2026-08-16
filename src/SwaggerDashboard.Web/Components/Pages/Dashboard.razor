@@ -91,6 +91,18 @@ else if (_dashboard is not null && _definition is not null)
             else if (_selectedOperation is null)
             {
                 <div class="sd-empty">
+                    @if (_selectedSlug is not null)
+                    {
+                        @* A shared link outlives the document it was made from. Landing on the
+                           dashboard with nothing said reads as a broken page rather than as an
+                           endpoint that has since been removed or renamed. *@
+                        <div class="alert alert-warning py-2">
+                            <strong>@_selectedSlug</strong> bu API'de bulunamadı. Bağlantı
+                            paylaşıldıktan sonra swagger dokümanı değişmiş olabilir; soldaki
+                            listeden arayabilirsiniz.
+                        </div>
+                    }
+
                     <h3>@_dashboard.Title</h3>
                     <p class="text-secondary">@_dashboard.Description</p>
                     <p class="text-secondary">

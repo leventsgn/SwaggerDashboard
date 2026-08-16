@@ -38,7 +38,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         options.LoginPath = "/login";
         options.LogoutPath = "/account/logout";
-        options.AccessDeniedPath = "/login";
+        // Not the login page: a signed-in user with the wrong role is not signed out, and
+        // sending them there reads as an expired session and invites a second sign-in with
+        // the same account that will be refused in exactly the same way.
+        options.AccessDeniedPath = "/access-denied";
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
         options.Cookie.Name = "swagger-dashboard-auth";

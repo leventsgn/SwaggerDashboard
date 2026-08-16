@@ -202,7 +202,7 @@
     }
 
     private static bool Contains(string? value, string term) =>
-        value is not null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
+        SwaggerDashboard.Application.Routing.SearchText.Contains(value, term);
 
     private void OnSearchInput(ChangeEventArgs args) => _search = args.Value?.ToString() ?? string.Empty;
 

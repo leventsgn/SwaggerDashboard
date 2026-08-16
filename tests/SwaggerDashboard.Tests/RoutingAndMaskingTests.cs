@@ -207,4 +207,64 @@ public class CodeSnippetTests
     {
         Assert.Contains("application/json", CodeSnippetGenerator.ToJavaScript(Call));
     }
+
+    [Fact]
+    public void A_body_carrying_snippet_names_its_content_type()
+    {
+        // The request builder leaves the content type out of the header dictionary because
+        // the HTTP client sets it from the body object. A snippet has no such object, so
+        // copying the dictionary alone produced a call that posted JSON with no Content-Type,
+        // which most APIs answer with a 415.
+        var call = Call with { Headers = new Dictionary<string, string>() };
+
+        Assert.Contains("-H 'Content-Type: application/json'", CodeSnippetGenerator.ToCurl(call));
+        Assert.Contains("'Content-Type': 'application/json'", CodeSnippetGenerator.ToJavaScript(call));
+    }
+
+    [Fact]
+    public void A_content_type_the_call_already_carries_is_not_repeated()
+    {
+        var call = Call with
+        {
+            Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["content-type"] = "application/json; charset=utf-8",
+            },
+        };
+
+        var curl = CodeSnippetGenerator.ToCurl(call);
+
+        Assert.Contains("charset=utf-8", curl);
+        Assert.Equal(1, CountOccurrences(curl, "content-type"));
+    }
+
+    [Fact]
+    public void A_bodyless_call_does_not_claim_a_content_type()
+    {
+        var call = Call with { Method = "GET", Body = null, Headers = new Dictionary<string, string>() };
+
+        Assert.DoesNotContain("Content-Type", CodeSnippetGenerator.ToCurl(call));
+    }
+
+    [Fact]
+    public void A_dollar_brace_in_the_body_cannot_escape_the_javascript_template_literal()
+    {
+        var call = Call with { Body = """{"template":"${process.env.HOME}"}""" };
+
+        Assert.Contains("\\${process.env.HOME}", CodeSnippetGenerator.ToJavaScript(call));
+    }
+
+    private static int CountOccurrences(string text, string needle)
+    {
+        var count = 0;
+        var index = text.IndexOf(needle, StringComparison.OrdinalIgnoreCase);
+
+        while (index >= 0)
+        {
+            count++;
+            index = text.IndexOf(needle, index + needle.Length, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return count;
+    }
 }

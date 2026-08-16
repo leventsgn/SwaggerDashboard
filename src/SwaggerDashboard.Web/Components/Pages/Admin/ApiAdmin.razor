@@ -252,8 +252,13 @@
             {
                 _diff = result.Diff;
                 Report("Doküman değişti, dashboard ve endpointler güncellendi.", false);
-                await ReloadAsync();
             }
+
+            // Reloaded whatever the outcome. The check time is recorded on every attempt,
+            // including a failed one, but the table only refreshed when the document had
+            // changed — so "Son kontrol" kept showing a time from days ago right after a
+            // check that had just run.
+            await ReloadAsync();
         }
         finally
         {

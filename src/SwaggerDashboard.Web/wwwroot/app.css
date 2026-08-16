@@ -1489,20 +1489,33 @@ td.sd-row-actions > .sd-actions-grid {
         gap: var(--sd-1);
     }
 
-    /* The bar keeps every destination reachable by scrolling sideways rather than dropping
-       items or wrapping into a second row that pushes the workbench off screen. */
+    /* Only the nav scrolls sideways. Scrolling the whole bar pushed sign-out and the theme
+       toggle past the right edge on a 390px screen, where nothing on the page suggested there
+       was more bar to reach — the controls were simply gone. Keeping the overflow on the nav
+       pins them in view and still leaves every destination reachable. */
     .sd-topbar {
         gap: var(--sd-3);
         padding: 0 var(--sd-2);
+    }
+
+    .sd-topnav {
+        flex: 1 1 auto;
+        min-width: 0;
         overflow-x: auto;
         scrollbar-width: none;
     }
 
-    .sd-topbar::-webkit-scrollbar {
+    .sd-topnav::-webkit-scrollbar {
         display: none;
     }
 
-    .sd-topbar > * {
+    .sd-topnav a {
+        white-space: nowrap;
+    }
+
+    .sd-brand,
+    .sd-topbar-right,
+    .sd-topbar-right > * {
         flex: 0 0 auto;
     }
 

@@ -15,6 +15,7 @@ public static class ReservedRoutes
         "account",
         "login",
         "logout",
+        "access-denied",
         "api",
         "proxy",
         "health",
