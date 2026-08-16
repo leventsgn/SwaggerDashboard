@@ -41,11 +41,10 @@
 
     @if (Node.EffectiveSchema.Truncated)
     {
+        @* Three different reasons, three different things to tell the user. Calling every
+           named schema "recursive" was wrong for the two that are not cycles at all. *@
         <div class="alert alert-warning py-1 px-2 small mb-1">
-            @(Node.EffectiveSchema.RefName is null
-                ? "Bu alan çok derin iç içe olduğu için form olarak açılmadı."
-                : $"'{Node.EffectiveSchema.RefName}' özyinelemeli bir şema; form olarak açılmadı.")
-            JSON olarak girin.
+            @TruncationReason JSON olarak girin.
         </div>
         <textarea class="form-control form-control-sm sd-json" rows="3" value="@Node.Value"
                   @onchange="OnValueChanged" placeholder="{ }"></textarea>
@@ -140,6 +139,30 @@
 
     [Parameter]
     public EventCallback OnChanged { get; set; }
+
+    /// <summary>Why this field is a JSON box instead of a form.</summary>
+    private string TruncationReason
+    {
+        get
+        {
+            var schema = Node.EffectiveSchema;
+
+            if (schema.UnresolvedRef is not null)
+            {
+                return $"'{schema.UnresolvedRef}' bu dokümanın dışında tanımlı, " +
+                       "bu yüzden alanın şeması bilinmiyor.";
+            }
+
+            if (schema.Recursive)
+            {
+                return $"'{schema.RefName}' kendine dönen bir şema; form olarak açılamıyor.";
+            }
+
+            return schema.RefName is null
+                ? "Bu alan çok derin iç içe olduğu için form olarak açılmadı."
+                : $"'{schema.RefName}' iç içe geçme sınırını aştığı için form olarak açılmadı.";
+        }
+    }
 
     private async Task OnValueChanged(ChangeEventArgs args)
     {

@@ -9,7 +9,7 @@ namespace SwaggerDashboard.Application.Dashboards;
 public class DashboardDocument
 {
     /// <summary>Increment when the generator output shape changes.</summary>
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -215,6 +215,27 @@ public class FieldSchema
 
     /// <summary>True when descent stopped because of recursion or the depth limit.</summary>
     public bool Truncated { get; set; }
+
+    /// <summary>
+    /// True when <see cref="Truncated"/> is set because the schema refers back to itself.
+    /// </summary>
+    /// <remarks>
+    /// The two reasons for stopping read very differently to whoever has to fill the field
+    /// in, and the form used to call every named schema recursive — including ones that were
+    /// simply deeper than the limit, which is not the document's fault and not a cycle.
+    /// </remarks>
+    public bool Recursive { get; set; }
+
+    /// <summary>
+    /// The reference the document points at when it lives in another file.
+    /// </summary>
+    /// <remarks>
+    /// The reader resolves references inside the document only, so an external one arrives
+    /// with no type and no properties. It used to render as an "unknown" field with nothing
+    /// said about it; naming the target is what lets the user recognise the situation rather
+    /// than assume the dashboard is broken.
+    /// </remarks>
+    public string? UnresolvedRef { get; set; }
 
     /// <summary>Item schema when <see cref="Type"/> is array.</summary>
     public FieldSchema? Items { get; set; }

@@ -14,6 +14,23 @@ sayfayı gösterir.
   proxy üzerinden geçirmek.
 - Yeni bir API eklemek için kod değişikliği gerektirmemek.
 
+## Desteklenen doküman sürümleri
+
+| Sürüm | Durum |
+| --- | --- |
+| Swagger 2.0 | Destekleniyor |
+| OpenAPI 3.0.x | Destekleniyor |
+| OpenAPI 3.1.x | **Desteklenmiyor** |
+
+Kullanılan okuyucu (`Microsoft.OpenApi.Readers` 1.6.x) 3.1'i okumuyor. 3.1 bir doküman
+kaydedilmeye çalışıldığında uygulama sürümü adıyla söyleyerek reddeder; yarım bir dashboard
+üretmez. Çoğu üretici hem 3.0 hem 3.1 çıktı verebiliyor; bu durumda 3.0 adresini kullanın.
+
+Doküman içindeki `$ref` referansları çözümlenir. Başka bir dosyaya işaret eden referanslar
+(`./common.yaml#/components/schemas/Order` gibi) çözümlenemez: indirilen tek bir dokümanın
+yanında okunacak dosya yoktur. Bu alanlar formda JSON kutusu olarak, hangi referansın
+çözümlenemediği yazılarak gösterilir ve dashboard uyarılarına eklenir.
+
 ## URL modeli
 
 Kullanıcı normal swagger bağlantısının `https://` bölümünü dashboard adresiyle değiştirir:

@@ -207,4 +207,125 @@ public class DashboardGeneratorTests
         Assert.False(result.Success);
         Assert.False(string.IsNullOrWhiteSpace(result.Error));
     }
+
+    [Theory]
+    [InlineData("""
+        {
+          "openapi": "3.1.0",
+          "info": { "title": "T", "version": "1" },
+          "paths": { "/ping": { "get": { "responses": { "200": { "description": "ok" } } } } }
+        }
+        """)]
+    [InlineData("""
+        openapi: 3.1.0
+        info: { title: T, version: '1' }
+        paths:
+          /ping:
+            get:
+              responses:
+                '200': { description: ok }
+        """)]
+    public void A_3_1_document_is_refused_by_name_rather_than_as_a_parse_error(string content)
+    {
+        // The reader handles 2.0 and 3.0 and refuses 3.1 outright. Its own message names the
+        // version but says nothing about what to do, so the screen read as "your document is
+        // broken" — which it is not. Both serializations have to be recognised.
+        var result = _generator.Generate(content);
+
+        Assert.False(result.Success);
+        Assert.Contains("3.1", result.Error);
+        Assert.Contains("3.0", result.Error);
+        Assert.DoesNotContain("ayrıştırılamadı", result.Error);
+    }
+
+    [Fact]
+    public void A_3_0_document_is_not_mistaken_for_3_1()
+    {
+        var dashboard = Generate("""
+            {
+              "openapi": "3.0.1",
+              "info": { "title": "T", "version": "1" },
+              "paths": { "/ping": { "get": { "responses": { "200": { "description": "ok" } } } } }
+            }
+            """);
+
+        Assert.Single(dashboard.Operations);
+    }
+
+    [Fact]
+    public void A_reference_into_another_file_is_named_instead_of_rendering_as_unknown()
+    {
+        // The reader resolves references inside the document only, so this arrives with no
+        // type and no properties. It used to become a bare "unknown" field with nothing said.
+        var dashboard = Generate("""
+            {
+              "openapi": "3.0.1",
+              "info": { "title": "T", "version": "1" },
+              "paths": {
+                "/orders": {
+                  "post": {
+                    "requestBody": {
+                      "content": {
+                        "application/json": {
+                          "schema": { "$ref": "./common.yaml#/components/schemas/Order" }
+                        }
+                      }
+                    },
+                    "responses": { "200": { "description": "ok" } }
+                  }
+                }
+              }
+            }
+            """);
+
+        var body = dashboard.Operations.Single().RequestBody!.Contents.Single().Schema;
+
+        Assert.True(body.Truncated);
+        Assert.False(body.Recursive);
+        Assert.Contains("common.yaml", body.UnresolvedRef);
+        Assert.Contains(dashboard.Warnings, w => w.Contains("common.yaml"));
+    }
+
+    [Fact]
+    public void A_schema_that_refers_back_to_itself_is_marked_recursive()
+    {
+        var dashboard = Generate("""
+            {
+              "openapi": "3.0.1",
+              "info": { "title": "T", "version": "1" },
+              "paths": {
+                "/nodes": {
+                  "post": {
+                    "requestBody": {
+                      "content": {
+                        "application/json": {
+                          "schema": { "$ref": "#/components/schemas/Node" }
+                        }
+                      }
+                    },
+                    "responses": { "200": { "description": "ok" } }
+                  }
+                }
+              },
+              "components": {
+                "schemas": {
+                  "Node": {
+                    "type": "object",
+                    "properties": {
+                      "name": { "type": "string" },
+                      "child": { "$ref": "#/components/schemas/Node" }
+                    }
+                  }
+                }
+              }
+            }
+            """);
+
+        var body = dashboard.Operations.Single().RequestBody!.Contents.Single().Schema;
+        var child = body.Properties.Single(p => p.Name == "child").Schema;
+
+        Assert.True(child.Truncated);
+        Assert.True(child.Recursive);
+        Assert.Null(child.UnresolvedRef);
+    }
 }

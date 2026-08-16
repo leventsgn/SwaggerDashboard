@@ -36,6 +36,19 @@ public class DashboardGeneratorService : IDashboardGeneratorService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "OpenAPI document could not be parsed");
+
+            // The reader supports Swagger 2.0 and OpenAPI 3.0, and refuses 3.1 outright. Its
+            // own message names the version but says nothing about what to do, so it read as
+            // "your document is broken" — which it is not. Named here so the answer is that
+            // the platform does not support 3.1 yet, and what to try instead.
+            if (DeclaresOpenApi31(openApiContent))
+            {
+                return DashboardGenerationResult.Fail(
+                    "Bu doküman OpenAPI 3.1 sürümünde. Swagger Dashboard şu an Swagger 2.0 ve " +
+                    "OpenAPI 3.0 dokümanlarını okuyabiliyor. API'nizin 3.0 çıktısı varsa onun " +
+                    "adresini kullanın.");
+            }
+
             return DashboardGenerationResult.Fail($"OpenAPI dokümanı ayrıştırılamadı: {ex.Message}");
         }
 
@@ -383,8 +396,19 @@ public class DashboardGeneratorService : IDashboardGeneratorService
 
         public int Depth { get; private set; }
 
-        public bool TryEnter(string? refId)
+        /// <summary>
+        /// Descends into a schema, refusing when the document would take the form too deep or
+        /// in a circle.
+        /// </summary>
+        /// <remarks>
+        /// The reason is reported back because the two cases mean different things on screen:
+        /// a cycle is a shape the form genuinely cannot draw, while the depth limit is the
+        /// dashboard's own budget running out on a document that is merely large.
+        /// </remarks>
+        public bool TryEnter(string? refId, out bool recursive)
         {
+            recursive = false;
+
             if (Depth >= DashboardConstants.MaxSchemaDepth)
             {
                 return false;
@@ -392,6 +416,7 @@ public class DashboardGeneratorService : IDashboardGeneratorService
 
             if (refId is not null && !_visitedRefs.Add(refId))
             {
+                recursive = true;
                 return false;
             }
 
@@ -418,13 +443,35 @@ public class DashboardGeneratorService : IDashboardGeneratorService
 
         var refId = schema.Reference?.Id;
 
-        if (!context.TryEnter(refId))
+        // A reference into another file is never resolved: the reader follows references
+        // inside the document only, and a fetched OpenAPI document has no sibling files to
+        // read. What arrives has no type and no properties, so without this it rendered as a
+        // bare "unknown" field with nothing said about why.
+        if (schema.UnresolvedReference && schema.Reference is not null)
+        {
+            var target = schema.Reference.ReferenceV3 ?? schema.Reference.Id ?? "?";
+
+            context.Dashboard.Warnings.Add(
+                $"'{target}' referansı bu dokümanın dışında; alan şeması çözümlenemedi ve JSON olarak girilmesi gerekiyor.");
+
+            return new FieldSchema
+            {
+                Type = SchemaTypes.Object,
+                RefName = refId,
+                UnresolvedRef = target,
+                Truncated = true,
+                Description = schema.Description,
+            };
+        }
+
+        if (!context.TryEnter(refId, out var recursive))
         {
             return new FieldSchema
             {
                 Type = string.IsNullOrEmpty(schema.Type) ? SchemaTypes.Object : schema.Type,
                 RefName = refId,
                 Truncated = true,
+                Recursive = recursive,
                 Description = schema.Description,
             };
         }
@@ -609,6 +656,49 @@ public class DashboardGeneratorService : IDashboardGeneratorService
         }
 
         return merged;
+    }
+
+    /// <summary>
+    /// Reads the version the document declares for itself.
+    /// </summary>
+    /// <remarks>
+    /// Taken from the raw text rather than from the diagnostic, because the reader reports
+    /// what it decided to parse the document as, not what the document said it was: a 3.1
+    /// file comes back labelled 3.0 with a list of errors. Only the first part of the text is
+    /// scanned; the version key is required to be at the top level and is written first in
+    /// practice, and scanning a multi-megabyte document for it would cost more than it is
+    /// worth. Both serializations are covered: <c>"openapi": "3.1.0"</c> and <c>openapi: 3.1.0</c>.
+    /// </remarks>
+    private static bool DeclaresOpenApi31(string content)
+    {
+        var head = content.Length > 4096 ? content[..4096] : content;
+        var index = head.IndexOf("openapi", StringComparison.OrdinalIgnoreCase);
+
+        while (index >= 0)
+        {
+            var rest = head.AsSpan(index + "openapi".Length);
+            var cursor = 0;
+
+            // Skip the closing quote of a JSON key, the separator and any whitespace.
+            while (cursor < rest.Length && (rest[cursor] is '"' or '\'' or ':' or ' ' or '\t'))
+            {
+                cursor++;
+            }
+
+            if (cursor < rest.Length && rest[cursor] is '"' or '\'')
+            {
+                cursor++;
+            }
+
+            if (rest[cursor..].StartsWith("3.1"))
+            {
+                return true;
+            }
+
+            index = head.IndexOf("openapi", index + 1, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 
     private static string ResolveType(OpenApiSchema schema)

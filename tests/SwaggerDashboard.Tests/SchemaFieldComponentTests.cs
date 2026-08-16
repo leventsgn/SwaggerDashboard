@@ -159,16 +159,51 @@ public class SchemaFieldComponentTests : TestContext
     }
 
     [Fact]
-    public void A_truncated_recursive_schema_explains_itself_instead_of_rendering_nothing()
+    public void A_schema_that_refers_back_to_itself_says_so()
     {
         var component = Render(new FormNode(new FieldSchema
         {
             Type = SchemaTypes.Object,
             Truncated = true,
+            Recursive = true,
             RefName = "Node",
         }, "node"));
 
-        Assert.Contains("özyinelemeli", component.Markup);
+        Assert.Contains("kendine dönen", component.Markup);
+        Assert.Contains("Node", component.Markup);
+        Assert.Single(component.FindAll("textarea"));
+    }
+
+    [Fact]
+    public void A_schema_cut_off_by_the_depth_limit_is_not_called_recursive()
+    {
+        // A named schema that is merely deeper than the budget is not a cycle, and saying it
+        // is sends whoever reads it looking for a loop in their document that is not there.
+        var component = Render(new FormNode(new FieldSchema
+        {
+            Type = SchemaTypes.Object,
+            Truncated = true,
+            Recursive = false,
+            RefName = "Address",
+        }, "address"));
+
+        Assert.Contains("iç içe geçme sınırını", component.Markup);
+        Assert.DoesNotContain("kendine dönen", component.Markup);
+        Assert.Single(component.FindAll("textarea"));
+    }
+
+    [Fact]
+    public void A_reference_into_another_file_names_the_reference_it_could_not_follow()
+    {
+        var component = Render(new FormNode(new FieldSchema
+        {
+            Type = SchemaTypes.Object,
+            Truncated = true,
+            UnresolvedRef = "./common.yaml#/components/schemas/Order",
+        }, "order"));
+
+        Assert.Contains("common.yaml", component.Markup);
+        Assert.Contains("bu dokümanın dışında", component.Markup);
         Assert.Single(component.FindAll("textarea"));
     }
 
