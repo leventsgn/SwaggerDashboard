@@ -139,7 +139,33 @@ zamanla birbirinden ayrışır ve hiçbir şey hizalanmaz.
 - .NET 8 SDK
 - SQL Server (üretim) — geliştirmede SQLite yeterlidir
 
-### Geliştirme ortamında çalıştırma
+### Tek tıkla yerelde çalıştırma
+
+| İşletim sistemi | Yapılacak |
+| --- | --- |
+| Windows | `baslat.cmd` dosyasına çift tıklayın |
+| macOS / Linux | `./baslat.sh` |
+
+Betik .NET 8 SDK'yı arar; bulursa uygulamayı doğrudan derleyip çalıştırır ve tarayıcıyı
+açar. SDK yoksa Docker'a düşer (`docker-compose.local.yml`), o da yoksa hangisini
+kurabileceğinizi söyler. İki yol da aynı yere çıkar:
+
+```
+http://localhost:5238      admin / development-only-password
+```
+
+Veriler SQLite'ta durur (`src/SwaggerDashboard.Web/swagger-dashboard.db`, Docker yolunda
+adlandırılmış bir hacimde) ve kapanışta silinmez. Sıfırdan başlamak için:
+
+```bash
+./baslat.sh sifirla        # Windows: baslat.cmd sifirla
+```
+
+> `docker-compose.local.yml` yalnızca kendi makineniz içindir: Development modu her hedefe,
+> `http`'ye ve özel ağlara izin verir. Sunucuya `docker-compose.yml` gider; o dosya SQL
+> Server ayağa kaldırır ve hedef alan adı listesi verilmeden başlamayı reddeder.
+
+### Elle çalıştırma
 
 ```bash
 dotnet restore
