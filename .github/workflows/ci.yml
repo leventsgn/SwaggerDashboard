@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      # Warnings stay warnings during development, but a pull request should not introduce
+      # new ones unnoticed.
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --logger 'trx;LogFileName=results.trx'
+
+      # The integration tests start a real Kestrel target on loopback, so a failure here is
+      # worth being able to read after the fact.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: ignore
+
+      # The published output is what the container image carries, so a Release publish that
+      # cannot be produced is a broken deployment even when the tests pass.
+      - name: Publish
+        run: dotnet publish src/SwaggerDashboard.Web -c Release -o ./artifacts --no-build
+
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Built but not pushed: this only proves the image still assembles.
+      - name: Build image
+        run: docker build -t swagger-dashboard:ci .

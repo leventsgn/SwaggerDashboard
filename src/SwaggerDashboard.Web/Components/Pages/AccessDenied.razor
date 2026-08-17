@@ -1,0 +1,43 @@
+@page "/access-denied"
+@layout Layout.MainLayout
+
+@* Static SSR: this is the cookie handler's redirect target, not an interactive screen. *@
+
+<PageTitle>Yetkiniz yok - Swagger Dashboard</PageTitle>
+
+<div class="sd-narrow sd-panel">
+    <h1 class="sd-login-title">Bu sayfaya erişemezsiniz</h1>
+
+    <p class="sd-login-help">
+        Oturumunuz açık, ancak
+        @if (ReturnUrl is not null)
+        {
+            <code>@ReturnUrl</code>
+            <text>adresi</text>
+        }
+        else
+        {
+            <text>bu sayfa</text>
+        }
+        rolünüzün erişebildiği sayfalar arasında değil. Erişim gerekiyorsa bir yöneticiden
+        rolünüzü değiştirmesini isteyin.
+    </p>
+
+    <div class="d-flex gap-2">
+        <a class="btn btn-primary" href="/apis">API listesine dön</a>
+        <a class="btn btn-outline-secondary" href="/login">Başka bir hesapla giriş yap</a>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The address that was refused, supplied by the cookie handler as a query string.
+    /// </summary>
+    /// <remarks>
+    /// The handler used to send a signed-in user with the wrong role to the login screen, which
+    /// reads as "your session expired" and invites a pointless second sign-in with the very
+    /// same account. Naming the address makes the refusal legible instead.
+    /// </remarks>
+    [SupplyParameterFromQuery(Name = "ReturnUrl")]
+    public string? ReturnUrl { get; set; }
+}

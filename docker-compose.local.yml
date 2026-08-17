@@ -1,0 +1,29 @@
+# Yerelde denemek için tek servislik kurulum: SQLite, SQL Server yok, ayar yok.
+#
+# Üretim için docker-compose.yml kullanılır; o dosya SQL Server ayağa kaldırır ve
+# hedef alan adı listesi verilmeden başlamayı reddeder. Buradaki Development modu
+# tam tersini yapar — her hedefe, http'ye ve özel ağlara izin verir — ki bu yalnızca
+# kendi makinenizde denerken doğru olan davranıştır. Bu dosyayı bir sunucuya
+# koymayın: uygulama Production modunda bu ayarlarla başlamayı zaten reddeder.
+
+services:
+  dashboard:
+    build: .
+    ports:
+      - "5238:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+      # Veritabanı adlandırılmış hacimde durur, böylece kayıtlı API'ler ve
+      # kullanıcılar konteyner yeniden kurulunca kaybolmaz. Entrypoint bu dizinin
+      # sahipliğini uygulama kullanıcısına devrediyor.
+      ConnectionStrings__SwaggerDashboard: "Data Source=/data/swagger-dashboard.db"
+
+      SwaggerDashboard__Seed__AdminUserName: admin
+      SwaggerDashboard__Seed__AdminPassword: development-only-password
+    volumes:
+      - dashboard-data:/data
+    restart: unless-stopped
+
+volumes:
+  dashboard-data:

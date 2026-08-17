@@ -1,0 +1,942 @@
+@using System.Text.Json.Nodes
+@using SwaggerDashboard.Application.Execution
+@using SwaggerDashboard.Application.Routing
+@using SwaggerDashboard.Infrastructure.Services
+@inject IApiProxyService ProxyService
+@inject ISavedRequestService SavedRequestService
+@inject IRequestLogService LogService
+@inject CurrentUserAccessor CurrentUserAccessor
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+
+@* Centre panel: operation metadata, generated request form, auth and the run button. *@
+
+<div class="sd-detail">
+    <header class="sd-detail-head">
+        <div class="sd-detail-title">
+            <span class="sd-method @EndpointList.MethodClass(Operation.Method)">@Operation.Method</span>
+            <code class="sd-detail-path">@Operation.Path</code>
+        </div>
+
+        @if (Operation.Deprecated)
+        {
+            <div class="alert alert-warning py-1 px-2 small mb-2">
+                Bu endpoint <strong>deprecated</strong> olarak işaretlenmiş.
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Operation.Summary))
+        {
+            <p class="sd-summary">@Operation.Summary</p>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Operation.Description))
+        {
+            <p class="sd-description">@Operation.Description</p>
+        }
+
+        <div class="sd-detail-meta">
+            @if (!string.IsNullOrWhiteSpace(Operation.OperationId))
+            {
+                <span>operationId: <code>@Operation.OperationId</code></span>
+            }
+            <span>tag: <code>@Operation.Tag</code></span>
+            <button type="button" class="btn btn-sm btn-link p-0" @onclick="CopyShareLink">
+                @(_shareCopied ? "Bağlantı kopyalandı" : "Paylaşılabilir bağlantı")
+            </button>
+            @if (UserId is not null)
+            {
+                <button type="button" class="btn btn-sm btn-link p-0 sd-fav-toggle"
+                        @onclick="() => OnToggleFavorite.InvokeAsync(Operation.Slug)"
+                        title="@(IsFavorite ? "Favorilerden çıkar" : "Favorilere ekle")">
+                    @(IsFavorite ? "★ Favoride" : "☆ Favorilere ekle")
+                </button>
+            }
+        </div>
+    </header>
+
+    @if (_validationError is not null)
+    {
+        <div class="alert alert-danger py-2">@_validationError</div>
+    }
+
+    @foreach (var location in new[] { ParameterLocations.Path, ParameterLocations.Query, ParameterLocations.Header, ParameterLocations.Cookie })
+    {
+        var parameters = Operation.Parameters.Where(p => p.In == location).ToList();
+        if (parameters.Count == 0)
+        {
+            continue;
+        }
+
+        <section class="sd-section">
+            <h4>@LocationLabel(location)</h4>
+            @foreach (var parameter in parameters)
+            {
+                <SchemaField Node="_parameterNodes[ParameterKey(parameter)]" OnChanged="OnFormChanged" />
+            }
+        </section>
+    }
+
+    @if (Operation.RequestBody is not null && _bodyContent is not null)
+    {
+        <section class="sd-section">
+            <h4>
+                Request Body
+                @if (Operation.RequestBody.Required)
+                {
+                    <span class="sd-required">*</span>
+                }
+            </h4>
+
+            @if (Operation.RequestBody.Contents.Count > 1)
+            {
+                <select class="form-select form-select-sm mb-2" value="@_contentType" @onchange="ChangeContentType">
+                    @foreach (var content in Operation.RequestBody.Contents)
+                    {
+                        <option value="@content.ContentType">@content.ContentType</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <div class="sd-content-type">@_contentType</div>
+            }
+
+            @if (IsFileUpload)
+            {
+                <div class="sd-upload">
+                    <label class="sd-field-label">
+                        @FileFieldLabel
+                        @if (IsFileRequired)
+                        {
+                            <span class="sd-required" title="Zorunlu">*</span>
+                        }
+                    </label>
+                    <InputFile OnChange="OnFilesSelected" multiple class="form-control form-control-sm" />
+                    @if (_files.Count > 0)
+                    {
+                        <ul class="small mt-1 mb-0">
+                            @foreach (var file in _files)
+                            {
+                                <li>@file.FileName (@ByteSize.Format(file.Content.Length))</li>
+                            }
+                        </ul>
+                    }
+                </div>
+
+                @* The other parts of a multipart body are ordinary fields and are sent with
+                   the file. They used to be filled with generated values and sent without
+                   ever being rendered, so the request carried data the user could not see. *@
+                @foreach (var child in NonFileFields)
+                {
+                    <SchemaField Node="child" OnChanged="OnFormChanged" />
+                }
+            }
+            else
+            {
+                @if (IsRawOnlyBody)
+                {
+                    <p class="sd-field-help">
+                        <strong>@_contentType</strong> gövdesi dokümandan üretilemez; içeriği
+                        siz yazmalısınız. Yazdığınız metin olduğu gibi, bu içerik tipiyle
+                        gönderilir.
+                    </p>
+                }
+                else
+                {
+                    <div class="sd-body-tabs">
+                        <button type="button" class="@(_rawMode ? null : "active")" @onclick="SwitchToForm">Form</button>
+                        <button type="button" class="@(_rawMode ? "active" : null)" @onclick="SwitchToRaw">Raw JSON</button>
+                    </div>
+                }
+
+                @if (_rawMode || IsRawOnlyBody)
+                {
+                    <textarea class="form-control sd-json" rows="14" value="@_rawBody" @onchange="OnRawChanged"></textarea>
+                    @if (_rawParseError is not null)
+                    {
+                        <div class="text-danger small mt-1">@_rawParseError</div>
+                    }
+                }
+                else
+                {
+                    <SchemaField Node="_bodyNode!" OnChanged="OnFormChanged" />
+                }
+            }
+        </section>
+    }
+
+    @if (Operation.RequiresAuthentication || Dashboard.SecuritySchemes.Count > 0)
+    {
+        <AuthPanel ApiDefinitionId="Definition.Id"
+                   Dashboard="Dashboard"
+                   UserId="@UserId"
+                   RequiredSchemes="Operation.SecuritySchemeKeys" />
+    }
+
+    <div class="sd-actions">
+        @if (CanExecute)
+        {
+            <button type="button" class="btn btn-primary" disabled="@_executing" @onclick="ExecuteAsync">
+                @(_executing ? "Çalışıyor..." : "Çalıştır")
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-primary" disabled>Çalıştır</button>
+            <span class="text-secondary small">Endpoint çalıştırma yetkiniz yok.</span>
+        }
+
+        @if (HasFillableFields)
+        {
+            <button type="button" class="btn btn-outline-secondary" @onclick="() => FillWithSamples(true)"
+                    title="Boş alanları dokümandaki tip ve format bilgisine göre örnek değerlerle doldurur. Girdiğiniz değerlere dokunmaz.">
+                Örnek verilerle doldur
+            </button>
+
+            <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm"
+                    title="Otomatik doldurulan değerler dahil tüm alanları başlangıç durumuna döndürür.">
+                Alanları temizle
+            </button>
+        }
+    </div>
+
+    @if (_sampleNote is not null)
+    {
+        <p class="sd-field-help">@_sampleNote</p>
+    }
+
+    @if (UserId is not null)
+    {
+        <section class="sd-section sd-saved">
+            <h4>Kaydedilmiş istekler</h4>
+
+            @if (_savedError is not null)
+            {
+                <div class="alert alert-danger py-2">@_savedError</div>
+            }
+
+            @if (_saved.Count == 0)
+            {
+                <p class="sd-field-help">
+                    Bu endpoint için kaydedilmiş istek yok. Doldurduğunuz formu bir adla
+                    kaydederseniz sonra tek tıkla geri yükleyebilirsiniz.
+                </p>
+            }
+            else
+            {
+                <ul class="sd-saved-list">
+                    @foreach (var saved in _saved)
+                    {
+                        <li class="sd-saved-item">
+                            <button type="button" class="btn btn-sm btn-outline-secondary sd-saved-load"
+                                    disabled="@_savedBusy" @onclick="() => LoadSavedAsync(saved.Id)"
+                                    title="@($"Son güncelleme: {saved.UpdatedAt.ToLocalTime():yyyy-MM-dd HH:mm}")">
+                                @saved.Name
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary sd-icon-btn"
+                                    disabled="@_savedBusy" @onclick="() => DeleteSavedAsync(saved.Id)"
+                                    title="Sil" aria-label="@($"{saved.Name} isteğini sil")">×</button>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="sd-saved-form">
+                <input class="form-control form-control-sm" placeholder="İstek adı (ör. 404 senaryosu)"
+                       maxlength="200" @bind="_saveName" @bind:event="oninput" />
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                        disabled="@(_savedBusy || string.IsNullOrWhiteSpace(_saveName))"
+                        @onclick="SaveCurrentAsync">
+                    Kaydet
+                </button>
+            </div>
+
+            <p class="sd-field-help">
+                Formdaki değerler ve gövde veritabanına yazılır; aynı adla kaydetmek öncekini
+                değiştirir. Kimlik doğrulama bilgileri <strong>kaydedilmez</strong>.
+            </p>
+        </section>
+
+        <section class="sd-section sd-history">
+            <h4>Son çağrılar</h4>
+
+            @if (_history.Count == 0)
+            {
+                <p class="sd-field-help">
+                    Bu endpointi henüz çağırmadınız. Çağrılar burada listelenir ve birine
+                    tıklayarak o isteği forma geri yükleyebilirsiniz.
+                </p>
+            }
+            else
+            {
+                <ul class="sd-history-list">
+                    @foreach (var entry in _history)
+                    {
+                        <li>
+                            <button type="button" class="sd-history-item" disabled="@_savedBusy"
+                                    @onclick="() => Replay(entry)"
+                                    title="Bu isteği forma yükle">
+                                <span class="sd-status @ResponsePanel.StatusClass(entry.ResponseStatusCode)">
+                                    @(entry.ResponseStatusCode == 0 ? "—" : entry.ResponseStatusCode.ToString())
+                                </span>
+                                <span class="sd-history-time">@entry.CreatedAt.ToLocalTime().ToString("dd.MM HH:mm")</span>
+                                <span class="sd-history-url sd-break">@ShortUrl(entry.RequestUrl)</span>
+                                <span class="sd-history-duration">@entry.DurationMilliseconds ms</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+
+                <p class="sd-field-help">
+                    Yükleme, adresteki path ve query değerleriyle gövdeyi geri getirir. Başlıklar
+                    ve kimlik bilgileri getirilmez: loga maskelenerek yazılırlar.
+                </p>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public DashboardOperation Operation { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public DashboardDocument Dashboard { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public ApiDefinition Definition { get; set; } = default!;
+
+    [Parameter]
+    public string? Environment { get; set; }
+
+    [Parameter]
+    public bool CanExecute { get; set; }
+
+    [Parameter]
+    public string? UserId { get; set; }
+
+    [Parameter]
+    public EventCallback<ProxyResponse?> OnExecuted { get; set; }
+
+    [Parameter]
+    public bool IsFavorite { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnToggleFavorite { get; set; }
+
+    private readonly Dictionary<string, FormNode> _parameterNodes = new(StringComparer.Ordinal);
+    private readonly List<ProxyFile> _files = [];
+
+    private FormNode? _bodyNode;
+    private DashboardContent? _bodyContent;
+    private string _contentType = "application/json";
+    private string _rawBody = string.Empty;
+    private string? _rawParseError;
+    private string? _validationError;
+    private string? _sampleNote;
+    private bool _rawMode;
+    private bool _executing;
+    private bool _shareCopied;
+
+    private IReadOnlyList<SavedRequest> _saved = [];
+    private string _saveName = string.Empty;
+    private string? _savedError;
+    private bool _savedBusy;
+
+    /// <summary>How many past calls the history list shows. Long enough to find the one you
+    /// mean, short enough to stay a list rather than a log viewer.</summary>
+    private const int HistoryCount = 8;
+
+    private IReadOnlyList<ApiRequestLog> _history = [];
+
+
+    private bool IsFileUpload =>
+        _contentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Content types whose fields travel as form parts rather than as a JSON document.
+    /// </summary>
+    private bool IsFormEncoded =>
+        IsFileUpload ||
+        _contentType.Contains("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsJsonBody => _contentType.Contains("json", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsPlainText =>
+        _contentType.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A body the platform cannot generate: XML, CSV, anything else. The user writes it, and
+    /// the editor says so rather than handing the target a JSON document under that label.
+    /// </summary>
+    private bool IsRawOnlyBody => !IsJsonBody && !IsFormEncoded && !IsPlainText;
+
+    /// <summary>There is nothing to fill when the operation takes no input at all.</summary>
+    private bool HasFillableFields => _parameterNodes.Count > 0 || _bodyNode is not null;
+
+    /// <summary>The parts of a multipart body that are not the file itself.</summary>
+    private IEnumerable<FormNode> NonFileFields =>
+        _bodyNode?.Children.Where(c => c.EffectiveSchema.Format != "binary") ?? [];
+
+    private FieldProperty? FileProperty =>
+        _bodyContent?.Schema.Properties.FirstOrDefault(p =>
+            p.Schema.Format == "binary" ||
+            (p.Schema.Type == SchemaTypes.Array && p.Schema.Items?.Format == "binary"));
+
+    private string FileFieldLabel => FileProperty?.Name ?? "Dosya";
+
+    private bool IsFileRequired => FileProperty?.Required == true;
+
+    /// <summary>
+    /// Fills the empty fields of the whole request with generated sample values.
+    /// </summary>
+    /// <remarks>
+    /// Runs on its own when the endpoint is opened, so a request is ready to send without any
+    /// typing, and again from the button after the user has cleared or edited fields. Values
+    /// already present are never overwritten either way. When the raw view is open the tree is
+    /// reloaded from the typed JSON first, so text the user wrote there survives and the fill
+    /// only adds what is still missing.
+    /// </remarks>
+    private void FillWithSamples(bool announce)
+    {
+        _sampleNote = null;
+
+        if (_rawMode)
+        {
+            SwitchToForm();
+
+            if (_rawParseError is not null)
+            {
+                _sampleNote = "Raw JSON geçerli olmadığı için doldurma yapılamadı; önce JSON'u düzeltin.";
+                return;
+            }
+        }
+
+        foreach (var node in _parameterNodes.Values)
+        {
+            node.FillWithSamples();
+        }
+
+        _bodyNode?.FillWithSamples();
+        OnFormChanged();
+
+        _sampleNote = announce
+            ? "Boş alanlar örnek değerlerle dolduruldu. Desen kısıtı olan ve üretilen değerin "
+              + "uymadığı alanlar boş bırakıldı; göndermeden önce kontrol edin."
+            : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        BuildForm(fill: true);
+        await LoadSavedListAsync();
+    }
+
+    private async Task LoadSavedListAsync()
+    {
+        if (UserId is null)
+        {
+            _saved = [];
+            _history = [];
+            return;
+        }
+
+        _saved = await SavedRequestService.ListAsync(Definition.Id, Operation.Slug, UserId);
+        await LoadHistoryAsync();
+    }
+
+    /// <summary>
+    /// Reloads the call list. Called after every run: a history that only refreshes when the
+    /// endpoint is reopened is always one visit behind the calls the user just made.
+    /// </summary>
+    private async Task LoadHistoryAsync()
+    {
+        if (UserId is null)
+        {
+            _history = [];
+            return;
+        }
+
+        _history = await LogService.GetForEndpointAsync(
+            Definition.Id, Operation.Slug, UserId, HistoryCount);
+    }
+
+    /// <summary>
+    /// Loads a past call back into the form.
+    /// </summary>
+    /// <remarks>
+    /// Goes through the same payload type as a saved request, so both restore paths behave
+    /// identically. A log row whose URL no longer matches the operation's path — the document
+    /// changed since the call — is reported rather than partially applied.
+    /// </remarks>
+    private void Replay(ApiRequestLog entry)
+    {
+        _savedBusy = true;
+        _savedError = null;
+
+        try
+        {
+            var payload = RequestReplay.FromLoggedRequest(Operation, entry.RequestUrl, entry.RequestBody);
+
+            if (payload is null)
+            {
+                _savedError = "Bu çağrı forma yüklenemedi: adres bu endpointin yoluna uymuyor, " +
+                              "swagger dokümanı çağrıdan sonra değişmiş olabilir.";
+                return;
+            }
+
+            BuildForm(fill: false);
+            SelectContentType(payload.ContentType);
+
+            // Cleared after the content type switch, which builds a fresh body node: without
+            // this the fields the stored request does not mention keep showing the schema's
+            // examples, as if the user had entered them.
+            ClearFields();
+
+            RequestComposer.ApplyPayload(payload, _parameterNodes, _bodyNode);
+            OnFormChanged();
+
+            _sampleNote = entry.RequestBodyTruncated
+                ? "Çağrı yüklendi. Gövde loga kırpılarak yazıldığı için eksik olabilir; göndermeden önce kontrol edin."
+                : $"{entry.CreatedAt.ToLocalTime():dd.MM HH:mm} çağrısı forma yüklendi.";
+        }
+        finally
+        {
+            _savedBusy = false;
+        }
+    }
+
+    /// <summary>Drops the scheme and host so the list shows the part that varies.</summary>
+    private static string ShortUrl(string requestUrl) =>
+        Uri.TryCreate(requestUrl, UriKind.Absolute, out var uri)
+            ? uri.PathAndQuery
+            : requestUrl;
+
+    /// <summary>Stores the form as it currently stands under the typed name.</summary>
+    private async Task SaveCurrentAsync()
+    {
+        _savedBusy = true;
+        _savedError = null;
+
+        try
+        {
+            // Captured from the node tree rather than from the raw text box so the two views
+            // cannot disagree about what is being saved.
+            if (_rawMode)
+            {
+                SwitchToForm();
+
+                if (_rawParseError is not null)
+                {
+                    _savedError = "Raw JSON geçerli olmadığı için kaydedilemedi; önce JSON'u düzeltin.";
+                    return;
+                }
+            }
+
+            var payload = RequestComposer.CapturePayload(_parameterNodes, _contentType, BuildBody());
+
+            var result = await SavedRequestService.SaveAsync(
+                Definition.Id, Operation.Slug, UserId!, _saveName, payload.ToJson());
+
+            if (!result.Success)
+            {
+                _savedError = result.Error;
+                return;
+            }
+
+            _saveName = string.Empty;
+            await LoadSavedListAsync();
+        }
+        finally
+        {
+            _savedBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Replaces the form with a stored request.
+    /// </summary>
+    /// <remarks>
+    /// The form is rebuilt empty first: loading has to reproduce what was saved, and sample
+    /// values left in fields the payload does not mention would be sent along with it.
+    /// </remarks>
+    private async Task LoadSavedAsync(int id)
+    {
+        _savedBusy = true;
+        _savedError = null;
+
+        try
+        {
+            var saved = await SavedRequestService.GetAsync(id, UserId!);
+
+            if (saved is null)
+            {
+                _savedError = "Kayıtlı istek bulunamadı; silinmiş olabilir.";
+                await LoadSavedListAsync();
+                return;
+            }
+
+            var payload = SavedRequestPayload.FromJson(saved.PayloadJson);
+
+            if (payload is null)
+            {
+                _savedError = $"'{saved.Name}' okunamadı; kayıt bu sürümle uyumlu değil.";
+                return;
+            }
+
+            BuildForm(fill: false);
+            SelectContentType(payload.ContentType);
+
+            // Cleared after the content type switch, which builds a fresh body node: without
+            // this the fields the stored request does not mention keep showing the schema's
+            // examples, as if the user had entered them.
+            ClearFields();
+
+            RequestComposer.ApplyPayload(payload, _parameterNodes, _bodyNode);
+            OnFormChanged();
+
+            if (_bodyNode is null && payload.Body is not null)
+            {
+                _rawBody = payload.Body;
+            }
+
+            _sampleNote = $"'{saved.Name}' yüklendi.";
+        }
+        finally
+        {
+            _savedBusy = false;
+        }
+    }
+
+    private async Task DeleteSavedAsync(int id)
+    {
+        _savedBusy = true;
+        _savedError = null;
+
+        try
+        {
+            await SavedRequestService.DeleteAsync(id, UserId!);
+            await LoadSavedListAsync();
+        }
+        finally
+        {
+            _savedBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Switches to the stored content type when the document still offers it, so a body saved
+    /// as one media type is not loaded into the editor for another.
+    /// </summary>
+    private void SelectContentType(string? contentType)
+    {
+        if (string.IsNullOrEmpty(contentType) || contentType == _contentType)
+        {
+            return;
+        }
+
+        var content = Operation.RequestBody?.Contents
+            .FirstOrDefault(c => c.ContentType == contentType);
+
+        if (content is null)
+        {
+            return;
+        }
+
+        _contentType = content.ContentType;
+        _bodyContent = content;
+        _bodyNode = new FormNode(content.Schema, null, true) { Included = true };
+    }
+
+    /// <summary>
+    /// Rebuilds the request form from the document, optionally pre-filled with sample values.
+    /// </summary>
+    private void BuildForm(bool fill)
+    {
+        _parameterNodes.Clear();
+
+        foreach (var parameter in Operation.Parameters)
+        {
+            _parameterNodes[ParameterKey(parameter)] =
+                new FormNode(parameter.Schema, parameter.Name, parameter.Required);
+        }
+
+        _bodyContent = Operation.RequestBody?.Contents.FirstOrDefault();
+        _bodyNode = null;
+        _rawBody = string.Empty;
+        _rawParseError = null;
+        _validationError = null;
+        _files.Clear();
+
+        if (_bodyContent is not null)
+        {
+            _contentType = _bodyContent.ContentType;
+            _bodyNode = new FormNode(_bodyContent.Schema, null, true) { Included = true };
+        }
+
+        // Filled up front rather than on demand: an endpoint that opens ready to run is the
+        // difference between one click and a form to type out, and the document already says
+        // what a plausible value looks like. Nothing here is overwritten later.
+        if (fill)
+        {
+            FillWithSamples(announce: false);
+        }
+
+        if (_bodyContent is not null)
+        {
+            _rawBody = _bodyContent.ExampleJson ?? _bodyNode!.ToJsonString();
+        }
+    }
+
+    /// <summary>
+    /// Empties the form, sample values included, for a request the user wants to type out.
+    /// </summary>
+    private void ResetForm()
+    {
+        BuildForm(fill: false);
+        ClearFields();
+
+        _sampleNote = "Alanlar temizlendi. Yeniden doldurmak için \"Örnek verilerle doldur\" kullanın.";
+    }
+
+    /// <summary>
+    /// Empties every field of the form as it currently stands.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilding the nodes does not do this: construction re-reads the schema's default and
+    /// example, so "Alanları temizle" handed back a form that still had values in it, and
+    /// loading a saved request or a past call left the fields it did not mention showing
+    /// examples the user never chose. Clearing runs after the nodes exist, which is also why
+    /// it has to come after any content type switch — that switch builds a new body node.
+    /// </remarks>
+    private void ClearFields()
+    {
+        foreach (var node in _parameterNodes.Values)
+        {
+            node.Clear();
+        }
+
+        _bodyNode?.Clear();
+
+        _rawBody = _bodyNode?.ToJsonString() ?? string.Empty;
+        _rawParseError = null;
+        _validationError = null;
+        _files.Clear();
+    }
+
+    private static string ParameterKey(DashboardParameter parameter) =>
+        RequestComposer.ParameterKey(parameter);
+
+    private static string LocationLabel(string location) => location switch
+    {
+        ParameterLocations.Path => "Path parametreleri",
+        ParameterLocations.Query => "Query parametreleri",
+        ParameterLocations.Header => "Header parametreleri",
+        ParameterLocations.Cookie => "Cookie parametreleri",
+        _ => location,
+    };
+
+    private void OnFormChanged()
+    {
+        // The raw view is regenerated from the node tree so the two views cannot drift.
+        if (_bodyNode is not null)
+        {
+            _rawBody = _bodyNode.ToJsonString();
+            _rawParseError = null;
+        }
+    }
+
+    private void SwitchToForm()
+    {
+        if (_bodyNode is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var parsed = string.IsNullOrWhiteSpace(_rawBody) ? null : JsonNode.Parse(_rawBody);
+            _bodyNode.LoadFrom(parsed);
+            _rawParseError = null;
+            _rawMode = false;
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            // Staying in the raw view keeps the user's text instead of discarding it.
+            _rawParseError = $"JSON geçersiz, forma dönülemedi: {ex.Message}";
+        }
+    }
+
+    private void SwitchToRaw()
+    {
+        if (_bodyNode is not null)
+        {
+            _rawBody = _bodyNode.ToJsonString();
+        }
+
+        _rawMode = true;
+    }
+
+    private void OnRawChanged(ChangeEventArgs args)
+    {
+        _rawBody = args.Value?.ToString() ?? string.Empty;
+        _rawParseError = null;
+    }
+
+    private void ChangeContentType(ChangeEventArgs args)
+    {
+        _contentType = args.Value?.ToString() ?? _contentType;
+        _bodyContent = Operation.RequestBody?.Contents
+            .FirstOrDefault(c => c.ContentType == _contentType) ?? _bodyContent;
+
+        if (_bodyContent is not null)
+        {
+            _bodyNode = new FormNode(_bodyContent.Schema, null, true) { Included = true };
+            _bodyNode.FillWithSamples();
+            _rawBody = _bodyContent.ExampleJson ?? _bodyNode.ToJsonString();
+        }
+
+        _files.Clear();
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs args)
+    {
+        _files.Clear();
+
+        foreach (var file in args.GetMultipleFiles(10))
+        {
+            // Uploads are bounded because the whole file is buffered before forwarding.
+            await using var stream = file.OpenReadStream(maxAllowedSize: 16 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+
+            _files.Add(new ProxyFile(
+                FieldName: FirstFileFieldName(),
+                FileName: file.Name,
+                ContentType: string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                Content: buffer.ToArray()));
+        }
+    }
+
+    private string FirstFileFieldName()
+    {
+        var binaryProperty = _bodyContent?.Schema.Properties
+            .FirstOrDefault(p => p.Schema.Format == "binary" ||
+                                 (p.Schema.Type == SchemaTypes.Array && p.Schema.Items?.Format == "binary"));
+
+        return binaryProperty?.Name ?? "file";
+    }
+
+    /// <summary>
+    /// Builds the shareable endpoint link and puts it on the clipboard.
+    /// </summary>
+    private async Task CopyShareLink()
+    {
+        var route = ApiDefinitionService.BuildRoute(Definition);
+        var link = Navigation.BaseUri.TrimEnd('/') + $"/{route}/endpoint/{Operation.Slug}";
+
+        _shareCopied = await Js.InvokeAsync<bool>("swaggerDashboard.copyToClipboard", link);
+
+        if (!_shareCopied)
+        {
+            _validationError = $"Bağlantı kopyalanamadı. Adres: {link}";
+        }
+    }
+
+    private async Task ExecuteAsync()
+    {
+        _validationError = null;
+
+        // The request is composed before the panel is told a call is starting. Announcing it
+        // first and then returning on a validation error left the response panel claiming a
+        // request was in flight for the rest of the session, even after switching endpoints.
+        var request = BuildRequest();
+
+        if (request is null)
+        {
+            return;
+        }
+
+        _executing = true;
+        await OnExecuted.InvokeAsync(null);
+
+        try
+        {
+            var response = await ProxyService.ExecuteAsync(request);
+            await OnExecuted.InvokeAsync(response);
+            await LoadHistoryAsync();
+        }
+        finally
+        {
+            _executing = false;
+        }
+    }
+
+    private ProxyRequest? BuildRequest()
+    {
+        var request = new ProxyRequest
+        {
+            ApiDefinitionId = Definition.Id,
+            OperationSlug = Operation.Slug,
+            EnvironmentName = Environment,
+            UserId = UserId,
+            ClientIp = CurrentUserAccessor.ClientIp,
+            ContentType = _contentType,
+            Body = BuildBody(),
+        };
+
+        if (!RequestComposer.TryApplyParameters(Operation, _parameterNodes, request, out var missing))
+        {
+            _validationError = $"Zorunlu path parametresi girilmedi: {missing}";
+            return null;
+        }
+
+        foreach (var file in _files)
+        {
+            request.Files.Add(file);
+        }
+
+        if (IsFormEncoded && _bodyContent is not null)
+        {
+            foreach (var property in _bodyContent.Schema.Properties.Where(p => p.Schema.Format != "binary"))
+            {
+                var node = _bodyNode?.Children.FirstOrDefault(c => c.Name == property.Name);
+                if (node is not null && !string.IsNullOrEmpty(node.Value))
+                {
+                    request.FormFields.Add(new(property.Name, node.Value));
+                }
+            }
+        }
+
+        return request;
+    }
+
+    /// <summary>
+    /// Renders the request body in the encoding the operation declares.
+    /// </summary>
+    /// <remarks>
+    /// Form encoded operations carry their values as fields, not as a body. A text/plain body
+    /// is the value itself: serialising it as JSON would send the quotes as part of the
+    /// payload. Anything the platform cannot generate is whatever the user typed.
+    /// </remarks>
+    private string? BuildBody()
+    {
+        if (Operation.RequestBody is null || IsFormEncoded)
+        {
+            return null;
+        }
+
+        if (_rawMode || IsRawOnlyBody)
+        {
+            return string.IsNullOrWhiteSpace(_rawBody) ? null : _rawBody;
+        }
+
+        if (IsPlainText)
+        {
+            return string.IsNullOrEmpty(_bodyNode?.Value) ? null : _bodyNode.Value;
+        }
+
+        return _bodyNode?.ToJsonString();
+    }
+}

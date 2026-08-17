@@ -1,0 +1,283 @@
+@using SwaggerDashboard.Application.Execution
+
+@* Renders one node of the request form, recursing into objects and arrays. *@
+
+<div class="sd-field @(Depth > 0 ? "sd-field-nested" : null)">
+    <div class="sd-field-head">
+        @if (!string.IsNullOrEmpty(Node.Name))
+        {
+            <label class="sd-field-label">
+                @if (!Node.Required)
+                {
+                    <input type="checkbox" class="form-check-input me-1" checked="@Node.Included"
+                           @onchange="OnIncludedChanged" title="Bu alanı gönder" />
+                }
+                <span>@Node.Name</span>
+                @if (Node.Required)
+                {
+                    <span class="sd-required" title="Zorunlu">*</span>
+                }
+            </label>
+        }
+        <span class="sd-field-type">@TypeLabel(Node.EffectiveSchema)</span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Node.EffectiveSchema.Description))
+    {
+        <div class="sd-field-help">@Node.EffectiveSchema.Description</div>
+    }
+
+    @if (Node.Schema.Variants.Count > 0)
+    {
+        <select class="form-select form-select-sm mb-2" value="@Node.SelectedVariant"
+                @onchange="OnVariantChanged">
+            @for (var i = 0; i < Node.Schema.Variants.Count; i++)
+            {
+                var index = i;
+                <option value="@index">@Node.Schema.Variants[index].Name</option>
+            }
+        </select>
+    }
+
+    @if (Node.EffectiveSchema.Truncated)
+    {
+        @* Three different reasons, three different things to tell the user. Calling every
+           named schema "recursive" was wrong for the two that are not cycles at all. *@
+        <div class="alert alert-warning py-1 px-2 small mb-1">
+            @TruncationReason JSON olarak girin.
+        </div>
+        <textarea class="form-control form-control-sm sd-json" rows="3" value="@Node.Value"
+                  @onchange="OnValueChanged" placeholder="{ }"></textarea>
+    }
+    else if (Node.IsObject)
+    {
+        <div class="sd-object">
+            @foreach (var child in Node.Children)
+            {
+                <SchemaField Node="child" Depth="Depth + 1" OnChanged="OnChanged" />
+            }
+            @if (Node.Children.Count == 0)
+            {
+                @* A schema that declares no properties is a free-form map. There is nothing
+                   to generate here: the keys are whatever the API expects, and inventing
+                   them would produce a request the API rejects. *@
+                <div class="sd-field-help">
+                    Bu gövde serbest biçimli; dokümanda tanımlı alan yok, alanları siz yazmalısınız.
+                </div>
+                <textarea class="form-control form-control-sm sd-json" rows="4" value="@Node.Value"
+                          @onchange="OnValueChanged" placeholder="{ }"></textarea>
+            }
+        </div>
+    }
+    else if (Node.IsArray)
+    {
+        <div class="sd-array">
+            @foreach (var item in Node.Items.ToList())
+            {
+                <div class="sd-array-item">
+                    <SchemaField Node="item" Depth="Depth + 1" OnChanged="OnChanged" />
+                    <button type="button" class="btn btn-sm btn-outline-secondary sd-icon-btn"
+                            @onclick="() => RemoveItem(item)" title="Sil"
+                            aria-label="Diziden bu öğeyi sil">×</button>
+                </div>
+            }
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="AddItem">
+                + Öğe ekle
+            </button>
+        </div>
+    }
+    else if (Node.EffectiveSchema.Enum.Count > 0)
+    {
+        <select class="form-select form-select-sm" value="@Node.Value" @onchange="OnValueChanged">
+            @if (!Node.Required)
+            {
+                <option value=""></option>
+            }
+            @foreach (var option in Node.EffectiveSchema.Enum)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+    }
+    else if (Node.EffectiveSchema.Type == SchemaTypes.Boolean)
+    {
+        <div class="form-check form-switch">
+            <input type="checkbox" class="form-check-input" checked="@(Node.Value == "true")"
+                   @onchange="OnBooleanChanged" />
+        </div>
+    }
+    else
+    {
+        @* Every constraint is bound to a nullable value so Blazor omits the attribute when
+           the schema does not declare it. Emitting a fallback instead would be actively
+           harmful: maxlength="0" makes the field reject all input. *@
+        <input type="@InputType(Node.EffectiveSchema)"
+               class="form-control form-control-sm"
+               value="@Node.Value"
+               placeholder="@Placeholder(Node.EffectiveSchema)"
+               min="@Node.EffectiveSchema.Minimum"
+               max="@Node.EffectiveSchema.Maximum"
+               minlength="@Node.EffectiveSchema.MinLength"
+               maxlength="@Node.EffectiveSchema.MaxLength"
+               pattern="@Node.EffectiveSchema.Pattern"
+               required="@Node.Required"
+               @onchange="OnValueChanged" />
+    }
+
+    @if (Constraints(Node.EffectiveSchema) is { Length: > 0 } constraints)
+    {
+        <div class="sd-field-constraints">@constraints</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public FormNode Node { get; set; } = default!;
+
+    [Parameter]
+    public int Depth { get; set; }
+
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    /// <summary>Why this field is a JSON box instead of a form.</summary>
+    private string TruncationReason
+    {
+        get
+        {
+            var schema = Node.EffectiveSchema;
+
+            if (schema.UnresolvedRef is not null)
+            {
+                return $"'{schema.UnresolvedRef}' bu dokümanın dışında tanımlı, " +
+                       "bu yüzden alanın şeması bilinmiyor.";
+            }
+
+            if (schema.Recursive)
+            {
+                return $"'{schema.RefName}' kendine dönen bir şema; form olarak açılamıyor.";
+            }
+
+            return schema.RefName is null
+                ? "Bu alan çok derin iç içe olduğu için form olarak açılmadı."
+                : $"'{schema.RefName}' iç içe geçme sınırını aştığı için form olarak açılmadı.";
+        }
+    }
+
+    private async Task OnValueChanged(ChangeEventArgs args)
+    {
+        Node.Value = args.Value?.ToString() ?? string.Empty;
+        Node.Included = true;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task OnBooleanChanged(ChangeEventArgs args)
+    {
+        Node.Value = args.Value is true ? "true" : "false";
+        Node.Included = true;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task OnIncludedChanged(ChangeEventArgs args)
+    {
+        Node.SetIncluded(args.Value is true);
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task OnVariantChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var index))
+        {
+            Node.SelectVariant(index);
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task AddItem()
+    {
+        Node.AddItem();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task RemoveItem(FormNode item)
+    {
+        Node.RemoveItem(item);
+        await OnChanged.InvokeAsync();
+    }
+
+    private static string TypeLabel(FieldSchema schema)
+    {
+        var label = schema.Type;
+
+        if (!string.IsNullOrEmpty(schema.Format))
+        {
+            label += $" ({schema.Format})";
+        }
+
+        if (schema.Nullable)
+        {
+            label += " | null";
+        }
+
+        return label;
+    }
+
+    /// <summary>Maps the OpenAPI format onto the closest native input control.</summary>
+    private static string InputType(FieldSchema schema) => schema.Format switch
+    {
+        "date" => "date",
+        "date-time" => "datetime-local",
+        "password" => "password",
+        "email" => "email",
+        "uri" or "url" => "url",
+        "binary" or "byte" => "text",
+        _ => schema.Type is SchemaTypes.Integer or SchemaTypes.Number ? "number" : "text",
+    };
+
+    private static string? Placeholder(FieldSchema schema)
+    {
+        if (!string.IsNullOrEmpty(schema.Example))
+        {
+            return schema.Example;
+        }
+
+        return schema.Format switch
+        {
+            "uuid" => "00000000-0000-0000-0000-000000000000",
+            "date-time" => "2026-01-01T00:00:00Z",
+            _ => null,
+        };
+    }
+
+    private static string Constraints(FieldSchema schema)
+    {
+        var parts = new List<string>();
+
+        if (schema.Minimum is { } min)
+        {
+            parts.Add($"min {min}");
+        }
+
+        if (schema.Maximum is { } max)
+        {
+            parts.Add($"max {max}");
+        }
+
+        if (schema.MinLength is { } minLength)
+        {
+            parts.Add($"en az {minLength} karakter");
+        }
+
+        if (schema.MaxLength is { } maxLength)
+        {
+            parts.Add($"en fazla {maxLength} karakter");
+        }
+
+        if (!string.IsNullOrEmpty(schema.Pattern))
+        {
+            parts.Add($"desen: {schema.Pattern}");
+        }
+
+        return string.Join(" · ", parts);
+    }
+}

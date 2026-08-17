@@ -1,0 +1,174 @@
+@page "/admin/users"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = Roles.Admin)]
+@using SwaggerDashboard.Infrastructure.Identity
+@inject IUserService UserService
+
+<PageTitle>Kullanıcılar - Swagger Dashboard</PageTitle>
+
+<div class="sd-page">
+    <div class="sd-page-head">
+        <h1>Kullanıcılar</h1>
+        <button class="btn btn-primary" @onclick="() => _showNew = !_showNew">
+            @(_showNew ? "Vazgeç" : "Yeni kullanıcı")
+        </button>
+    </div>
+
+    @if (_message is not null)
+    {
+        <div class="alert @(_isError ? "alert-danger" : "alert-success") py-2">@_message</div>
+    }
+
+    @if (_showNew)
+    {
+        <div class="sd-panel">
+            <div class="sd-form-grid">
+                <label>Kullanıcı adı</label>
+                <input class="form-control" @bind="_newUserName" />
+
+                <label>Görünen ad</label>
+                <input class="form-control" @bind="_newDisplayName" />
+
+                <label>Parola</label>
+                <input class="form-control" type="password" @bind="_newPassword" />
+
+                <label>Rol</label>
+                <select class="form-select" @bind="_newRole">
+                    @foreach (var role in Roles.All)
+                    {
+                        <option value="@role">@role</option>
+                    }
+                </select>
+            </div>
+
+            <div class="sd-actions">
+                <button class="btn btn-primary" disabled="@_busy" @onclick="CreateAsync">Oluştur</button>
+            </div>
+
+            <p class="sd-field-help">
+                Admin: tüm yönetim. Developer: endpoint çalıştırma ve yeni swagger adresi kaydetme.
+                Tester: yalnızca kayıtlı API'lerde endpoint çalıştırma. ReadOnly: yalnızca görüntüleme.
+            </p>
+        </div>
+    }
+
+    @if (_users is null)
+    {
+        <p class="text-secondary">Yükleniyor...</p>
+    }
+    else
+    {
+        <div class="sd-panel sd-panel-table">
+        <table class="table table-sm sd-table">
+            <thead>
+            <tr><th>Kullanıcı</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var user in _users)
+            {
+                <tr>
+                    <td>@user.UserName <span class="text-secondary small">@user.DisplayName</span></td>
+                    <td>
+                        <select class="form-select form-select-sm"
+                                value="@user.Role"
+                                @onchange="args => ChangeRoleAsync(user.Id, args.Value?.ToString())">
+                            @foreach (var role in Roles.All)
+                            {
+                                <option value="@role">@role</option>
+                            }
+                        </select>
+                    </td>
+                    <td>@(user.IsActive ? "Aktif" : "Pasif")</td>
+                    <td>@user.LastLoginAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    <td class="sd-row-actions">
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@_busy"
+                                @onclick="() => ToggleActiveAsync(user)">
+                            @(user.IsActive ? "Pasifleştir" : "Aktifleştir")
+                        </button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<DashboardUser>? _users;
+    private string _newUserName = string.Empty;
+    private string _newPassword = string.Empty;
+    private string? _newDisplayName;
+    private string _newRole = Roles.Tester;
+    private string? _message;
+    private bool _isError;
+    private bool _showNew;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync() => _users = await UserService.ListAsync();
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _message = null;
+
+        try
+        {
+            await UserService.CreateAsync(_newUserName, _newPassword, _newRole, _newDisplayName);
+            _message = $"'{_newUserName}' oluşturuldu.";
+            _isError = false;
+            _newUserName = string.Empty;
+            _newPassword = string.Empty;
+            _newDisplayName = null;
+            _showNew = false;
+            await ReloadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _message = ex.Message;
+            _isError = true;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ChangeRoleAsync(int userId, string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            return;
+        }
+
+        try
+        {
+            await UserService.SetRoleAsync(userId, role);
+            await ReloadAsync();
+            _message = "Rol güncellendi.";
+            _isError = false;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _message = ex.Message;
+            _isError = true;
+        }
+    }
+
+    private async Task ToggleActiveAsync(DashboardUser user)
+    {
+        _busy = true;
+
+        try
+        {
+            await UserService.SetActiveAsync(user.Id, !user.IsActive);
+            await ReloadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,316 @@
+@page "/admin/apis/{Id:int}"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = Roles.Admin)]
+@using SwaggerDashboard.Infrastructure.Services
+@inject IApiDefinitionService DefinitionService
+@inject IApiEnvironmentService EnvironmentService
+@inject CurrentUserAccessor CurrentUserAccessor
+@inject NavigationManager Navigation
+
+<PageTitle>API düzenle - Swagger Dashboard</PageTitle>
+
+<div class="sd-page">
+    @if (_definition is null)
+    {
+        <p class="text-secondary">Yükleniyor...</p>
+    }
+    else
+    {
+        <div class="sd-page-head">
+            <h1>@_definition.Name</h1>
+            <a class="btn btn-outline-secondary" href="/admin/apis">Listeye dön</a>
+        </div>
+
+        @if (_message is not null)
+        {
+            <div class="alert @(_isError ? "alert-danger" : "alert-success") py-2">@_message</div>
+        }
+
+        <div class="sd-panel">
+            <div class="sd-form-grid">
+                <label>Ad</label>
+                <input class="form-control" maxlength="@ApiFieldRules.NameMaxLength" @bind="_name" />
+
+                <label>Açıklama</label>
+                <input class="form-control" maxlength="@ApiFieldRules.DescriptionMaxLength" @bind="_description" />
+
+                <label>Route adı</label>
+                <input class="form-control" @bind="_routeName"
+                       placeholder="Boş bırakılırsa yalnızca uzun adres kullanılır" />
+
+                <label>Taban adres</label>
+                <input class="form-control" maxlength="@ApiFieldRules.UrlMaxLength" @bind="_baseUrl" />
+
+                <label>İzinli roller</label>
+                <input class="form-control" maxlength="@ApiFieldRules.AllowedRolesMaxLength" @bind="_allowedRoles"
+                       placeholder="Admin, Developer (boş = tümü)" />
+            </div>
+
+            <div class="sd-actions">
+                <button class="btn btn-primary" disabled="@_busy" @onclick="SaveAsync">Kaydet</button>
+                <button class="btn btn-outline-danger" disabled="@_busy" @onclick="() => _confirmDelete = true">Sil</button>
+            </div>
+
+            @if (_confirmDelete)
+            {
+                <div class="alert alert-warning">
+                    <p><strong>@_definition.Name</strong> ve tüm endpoint kayıtları silinecek. Emin misiniz?</p>
+                    <button class="btn btn-sm btn-danger" @onclick="DeleteAsync">Evet, sil</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _confirmDelete = false">Vazgeç</button>
+                </div>
+            }
+        </div>
+
+        <div class="sd-panel">
+            <h3>Doküman bilgileri</h3>
+            <table class="table table-sm sd-kv">
+                <tbody>
+                <tr><th>Dashboard adresi</th><td><code>/@ApiDefinitionService.BuildRoute(_definition)</code></td></tr>
+                <tr><th>Swagger adresi</th><td class="sd-break">@_definition.SwaggerUrlNormalized</td></tr>
+                <tr><th>Girilen adres</th><td class="sd-break">@_definition.SwaggerUrl</td></tr>
+                <tr><th>Target key</th><td><code>@_definition.TargetKey</code></td></tr>
+                <tr><th>Swagger hash</th><td><code>@_definition.SwaggerHash</code></td></tr>
+                <tr><th>OpenAPI sürümü</th><td>@_definition.SwaggerVersion</td></tr>
+                <tr><th>API sürümü</th><td>@_definition.ApiVersion</td></tr>
+                <tr><th>Dashboard şema sürümü</th><td>@_definition.DashboardSchemaVersion</td></tr>
+                <tr><th>Endpoint sayısı</th><td>@_definition.EndpointCount</td></tr>
+                <tr><th>Oluşturulma</th><td>@_definition.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") (@_definition.CreatedBy)</td></tr>
+                <tr><th>Son güncelleme</th><td>@_definition.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") (@_definition.UpdatedBy)</td></tr>
+                <tr><th>Son swagger kontrolü</th><td>@_definition.LastSwaggerCheckAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td></tr>
+                <tr><th>Son dashboard üretimi</th><td>@_definition.LastDashboardBuildAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td></tr>
+                <tr><th>Otomatik oluşturuldu</th><td>@(_definition.IsAutoProvisioned ? "Evet" : "Hayır")</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="sd-panel">
+            <h3>Ortamlar</h3>
+            <p class="sd-field-help">
+                Endpoint çalıştırılırken seçilen ortamın taban adresi kullanılır. Hiç ortam
+                kalmazsa API'nin kendi taban adresine düşülür.
+            </p>
+
+            @if (_environmentError is not null)
+            {
+                <div class="alert alert-danger py-2">@_environmentError</div>
+            }
+
+            <table class="table table-sm sd-table">
+                <thead>
+                <tr><th>Ad</th><th>Taban adres</th><th>Varsayılan</th><th></th></tr>
+                </thead>
+                <tbody>
+                @foreach (var environment in _environments)
+                {
+                    <tr>
+                        @if (_editingId == environment.Id)
+                        {
+                            <td><input class="form-control form-control-sm" @bind="_envName" /></td>
+                            <td><input class="form-control form-control-sm" @bind="_envBaseUrl" /></td>
+                            <td><input type="checkbox" class="form-check-input" @bind="_envIsDefault" /></td>
+                            <td class="sd-row-actions">
+                                <button class="btn btn-sm btn-primary" disabled="@_envBusy"
+                                        @onclick="SaveEnvironmentAsync">Kaydet</button>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => _editingId = null">Vazgeç</button>
+                            </td>
+                        }
+                        else
+                        {
+                            <td>@environment.Name</td>
+                            <td class="sd-break">@environment.BaseUrl</td>
+                            <td>@(environment.IsDefault ? "Evet" : "—")</td>
+                            <td class="sd-row-actions">
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => BeginEdit(environment)">Düzenle</button>
+                                <button class="btn btn-sm btn-outline-danger" disabled="@_envBusy"
+                                        @onclick="() => DeleteEnvironmentAsync(environment.Id)">Sil</button>
+                            </td>
+                        }
+                    </tr>
+                }
+
+                @if (_editingId == NewEnvironmentId)
+                {
+                    <tr>
+                        <td><input class="form-control form-control-sm" placeholder="Production" @bind="_envName" /></td>
+                        <td><input class="form-control form-control-sm" placeholder="https://api.company.com/v1" @bind="_envBaseUrl" /></td>
+                        <td><input type="checkbox" class="form-check-input" @bind="_envIsDefault" /></td>
+                        <td class="sd-row-actions">
+                            <button class="btn btn-sm btn-primary" disabled="@_envBusy"
+                                    @onclick="SaveEnvironmentAsync">Ekle</button>
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    @onclick="() => _editingId = null">Vazgeç</button>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+
+            @if (_editingId is null)
+            {
+                <button class="btn btn-outline-primary btn-sm" @onclick="BeginAdd">Ortam ekle</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private ApiDefinition? _definition;
+    private CurrentUser _user = new(null, null, null, false);
+
+    private string _name = string.Empty;
+    private string? _description;
+    private string? _routeName;
+    private string _baseUrl = string.Empty;
+    private string? _allowedRoles;
+    private string? _message;
+    private bool _isError;
+    private bool _busy;
+    private bool _confirmDelete;
+
+    /// <summary>Sentinel row id used while a new environment is being typed.</summary>
+    private const int NewEnvironmentId = -1;
+
+    private IReadOnlyList<ApiEnvironment> _environments = [];
+    private int? _editingId;
+    private string _envName = string.Empty;
+    private string _envBaseUrl = string.Empty;
+    private bool _envIsDefault;
+    private string? _environmentError;
+    private bool _envBusy;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _user = await CurrentUserAccessor.GetAsync();
+        _definition = await DefinitionService.GetByIdAsync(Id);
+
+        if (_definition is not null)
+        {
+            _environments = await EnvironmentService.ListAsync(Id);
+            _name = _definition.Name;
+            _description = _definition.Description;
+            _routeName = _definition.RouteName;
+            _baseUrl = _definition.BaseUrl;
+            _allowedRoles = _definition.AllowedRoles;
+        }
+    }
+
+    private void BeginAdd()
+    {
+        _editingId = NewEnvironmentId;
+        _envName = string.Empty;
+        _envBaseUrl = _definition?.BaseUrl ?? string.Empty;
+        _envIsDefault = _environments.Count == 0;
+        _environmentError = null;
+    }
+
+    private void BeginEdit(ApiEnvironment environment)
+    {
+        _editingId = environment.Id;
+        _envName = environment.Name;
+        _envBaseUrl = environment.BaseUrl;
+        _envIsDefault = environment.IsDefault;
+        _environmentError = null;
+    }
+
+    private async Task SaveEnvironmentAsync()
+    {
+        _envBusy = true;
+        _environmentError = null;
+
+        try
+        {
+            var result = _editingId == NewEnvironmentId
+                ? await EnvironmentService.AddAsync(Id, _envName, _envBaseUrl, _envIsDefault)
+                : await EnvironmentService.UpdateAsync(_editingId!.Value, _envName, _envBaseUrl, _envIsDefault);
+
+            if (!result.Success)
+            {
+                _environmentError = result.Error;
+                return;
+            }
+
+            _editingId = null;
+            _environments = await EnvironmentService.ListAsync(Id);
+        }
+        finally
+        {
+            _envBusy = false;
+        }
+    }
+
+    private async Task DeleteEnvironmentAsync(int environmentId)
+    {
+        _envBusy = true;
+        _environmentError = null;
+
+        try
+        {
+            var result = await EnvironmentService.DeleteAsync(environmentId);
+
+            if (!result.Success)
+            {
+                _environmentError = result.Error;
+                return;
+            }
+
+            _environments = await EnvironmentService.ListAsync(Id);
+        }
+        finally
+        {
+            _envBusy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _message = null;
+
+        try
+        {
+            await DefinitionService.UpdateMetadataAsync(new UpdateApiRequest
+            {
+                Id = Id,
+                Name = _name,
+                Description = _description,
+                RouteName = _routeName,
+                BaseUrl = _baseUrl,
+                AllowedRoles = _allowedRoles,
+                Actor = _user.UserName,
+            });
+
+            _definition = await DefinitionService.GetByIdAsync(Id);
+            _message = "Kaydedildi.";
+            _isError = false;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _message = ex.Message;
+            _isError = true;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        _busy = true;
+
+        try
+        {
+            await DefinitionService.DeleteAsync(Id);
+            Navigation.NavigateTo("/admin/apis");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

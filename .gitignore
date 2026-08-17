@@ -1,0 +1,21 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# Local SQLite database used by the development provider
+*.db
+*.db-shm
+*.db-wal
+
+# Publish output
+publish/
+artifacts/
+
+# Test results
+TestResults/
+*.trx
+coverage*.xml

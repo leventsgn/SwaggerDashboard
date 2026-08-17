@@ -1,0 +1,368 @@
+@page "/{*Target}"
+@* Prerendering is off on purpose. With it on the component resolves once during the static
+   render and again when the circuit starts, so a first visit provisions on the first pass
+   and the second pass finds the record already there: the work is done twice and the
+   "just registered" notice never survives to the interactive render. Without prerendering
+   the page renders once, in the circuit, and the preparing state is actually visible. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using SwaggerDashboard.Application.Routing
+@inject IApiDefinitionService DefinitionService
+@inject IUserEndpointService UserEndpointService
+@inject CurrentUserAccessor CurrentUserAccessor
+@inject NavigationManager Navigation
+
+<PageTitle>@(_dashboard?.Title ?? "Swagger Dashboard")</PageTitle>
+
+@if (_loading)
+{
+    <div class="sd-center-message">
+        <div class="spinner-border text-primary" role="status"></div>
+        <h2>Dashboard hazırlanıyor</h2>
+        <p class="text-secondary">
+            Bu adres ilk kez açılıyor. Swagger dokümanı indiriliyor ve endpointler analiz ediliyor.
+            Sonraki açılışlarda bu adım tekrarlanmayacak.
+        </p>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="sd-center-message">
+        <h2>@_errorTitle</h2>
+        <p class="text-secondary">@_error</p>
+
+        @if (_status == ResolveStatus.ProvisioningForbidden && !_user.IsAuthenticated)
+        {
+            <a class="btn btn-primary" href="@LoginLink()">Giriş yap</a>
+        }
+        else
+        {
+            <a class="btn btn-outline-secondary" href="/apis">Kayıtlı API'lere dön</a>
+        }
+    </div>
+}
+else if (_dashboard is not null && _definition is not null)
+{
+    @if (_wasProvisioned)
+    {
+        <div class="alert alert-success sd-provisioned">
+            <strong>@_definition.Name</strong> ilk kez kaydedildi ve @_dashboard.Operations.Count endpoint bulundu.
+            Bu adresi yer imlerinize ekleyebilirsiniz.
+        </div>
+    }
+
+    @* data-pane drives the narrow screen layout. The panes are tabs there and columns on a
+       wide screen, and which one applies is a question about the viewport, so CSS answers it
+       rather than JavaScript measuring the window. *@
+    <div class="sd-workbench @(_sweepOpen ? "sd-workbench-wide" : null)" data-pane="@_pane">
+        <nav class="sd-pane-tabs">
+            <button type="button" class="@(_pane == "list" ? "active" : null)"
+                    @onclick='() => _pane = "list"'>Endpointler</button>
+            <button type="button" class="@(_pane == "detail" ? "active" : null)"
+                    @onclick='() => _pane = "detail"'>@(_sweepOpen ? "Toplu test" : "İstek")</button>
+            @* The bulk run replaces the response panel, so there is no third pane to offer. *@
+            @if (!_sweepOpen)
+            {
+                <button type="button" class="@(_pane == "response" ? "active" : null)"
+                        @onclick='() => _pane = "response"'>Yanıt</button>
+            }
+        </nav>
+
+        <EndpointList Dashboard="_dashboard"
+                      Definition="_definition"
+                      SelectedSlug="@_selectedSlug"
+                      Environments="_definition.Environments.ToList()"
+                      SelectedEnvironment="@_environment"
+                      Favorites="_favorites"
+                      Recents="_recents"
+                      SweepOpen="_sweepOpen"
+                      OnSelect="SelectOperation"
+                      OnEnvironmentChange="ChangeEnvironment"
+                      OnToggleSweep="ToggleSweep" />
+
+        <section class="sd-center">
+            @if (_sweepOpen)
+            {
+                <SweepPanel Definition="_definition"
+                            Dashboard="_dashboard"
+                            Environment="@_environment"
+                            CanExecute="_user.CanExecute"
+                            UserId="@_user.UserId"
+                            OnSelect="SelectOperation" />
+            }
+            else if (_selectedOperation is null)
+            {
+                <div class="sd-empty">
+                    @if (_selectedSlug is not null)
+                    {
+                        @* A shared link outlives the document it was made from. Landing on the
+                           dashboard with nothing said reads as a broken page rather than as an
+                           endpoint that has since been removed or renamed. *@
+                        <div class="alert alert-warning py-2">
+                            <strong>@_selectedSlug</strong> bu API'de bulunamadı. Bağlantı
+                            paylaşıldıktan sonra swagger dokümanı değişmiş olabilir; soldaki
+                            listeden arayabilirsiniz.
+                        </div>
+                    }
+
+                    <h3>@_dashboard.Title</h3>
+                    <p class="text-secondary">@_dashboard.Description</p>
+                    <p class="text-secondary">
+                        Soldaki listeden bir endpoint seçin. Toplam @_dashboard.Operations.Count endpoint,
+                        @_dashboard.Tags.Count grup.
+                    </p>
+                    @if (_dashboard.Warnings.Count > 0)
+                    {
+                        <details class="sd-warnings">
+                            <summary>@_dashboard.Warnings.Count ayrıştırma uyarısı</summary>
+                            <ul>
+                                @foreach (var warning in _dashboard.Warnings)
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        </details>
+                    }
+                </div>
+            }
+            else
+            {
+                <EndpointDetail @key="_selectedOperation.Slug"
+                                Operation="_selectedOperation"
+                                Dashboard="_dashboard"
+                                Definition="_definition"
+                                Environment="@_environment"
+                                CanExecute="_user.CanExecute"
+                                UserId="@_user.UserId"
+                                IsFavorite="_favorites.Contains(_selectedOperation.Slug)"
+                                OnToggleFavorite="ToggleFavoriteAsync"
+                                OnExecuted="OnExecuted" />
+            }
+        </section>
+
+        @if (!_sweepOpen)
+        {
+            <ResponsePanel Response="_response" Previous="_previousResponse" Executing="_executing" />
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string? Target { get; set; }
+
+    private DashboardDocument? _dashboard;
+    private ApiDefinition? _definition;
+    private DashboardOperation? _selectedOperation;
+    private ProxyResponse? _response;
+
+    /// <summary>
+    /// The response before the current one, for the same endpoint, so the two can be
+    /// compared. Kept in the circuit rather than read back from the log: response bodies are
+    /// only persisted when body logging is enabled, and the comparison has to work regardless.
+    /// </summary>
+    private ProxyResponse? _previousResponse;
+    private CurrentUser _user = new(null, null, null, false);
+
+    private string? _selectedSlug;
+    private string? _environment;
+    private string? _error;
+    private string _errorTitle = "Dashboard açılamadı";
+    private ResolveStatus _status = ResolveStatus.Found;
+    private bool _loading = true;
+    private bool _executing;
+    private bool _wasProvisioned;
+    private bool _sweepOpen;
+
+    /// <summary>
+    /// Which panel is on screen when the three do not fit side by side. Ignored on a wide
+    /// screen, where all three are visible at once.
+    /// </summary>
+    private string _pane = "list";
+    private string? _loadedTarget;
+    private IReadOnlyCollection<string> _favorites = [];
+    private IReadOnlyList<string> _recents = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var target = string.IsNullOrWhiteSpace(Target) ? string.Empty : Target;
+
+        if (string.Equals(target, _loadedTarget, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _loadedTarget = target;
+        await LoadAsync(target);
+    }
+
+    private async Task LoadAsync(string target)
+    {
+        _loading = true;
+        _error = null;
+        _dashboard = null;
+        _definition = null;
+        _selectedOperation = null;
+        _response = null;
+        _previousResponse = null;
+        _sweepOpen = false;
+        _pane = "list";
+
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            Navigation.NavigateTo("/apis");
+            return;
+        }
+
+        _user = await CurrentUserAccessor.GetAsync();
+
+        // A shareable endpoint link carries the operation slug after the API route, e.g.
+        // /api.company.com/swagger/endpoint/get-customer-by-id.
+        var (routeTail, slug) = SplitEndpointLink(target);
+        _selectedSlug = slug;
+
+        StateHasChanged();
+
+        var result = await DefinitionService.ResolveAsync(routeTail, _user.ToResolveContext());
+
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _status = result.Status;
+            _error = result.Error;
+            _errorTitle = result.Status switch
+            {
+                ResolveStatus.InvalidUrl => "Adres anlaşılamadı",
+                ResolveStatus.NotRegistered => "API kayıtlı değil",
+                ResolveStatus.ProvisioningForbidden => "Yetki gerekiyor",
+                ResolveStatus.ProvisioningFailed => "Swagger dokümanı okunamadı",
+                ResolveStatus.Inactive => "API pasif",
+                ResolveStatus.Forbidden => "Erişim yok",
+                _ => "Dashboard açılamadı",
+            };
+            return;
+        }
+
+        _definition = result.Definition;
+        _dashboard = result.Dashboard;
+        _wasProvisioned = result.WasProvisioned;
+        _environment = _definition!.Environments.FirstOrDefault(e => e.IsDefault)?.Name
+                       ?? _definition.Environments.FirstOrDefault()?.Name;
+
+        if (_selectedSlug is not null)
+        {
+            _selectedOperation = _dashboard!.Operations
+                .FirstOrDefault(o => string.Equals(o.Slug, _selectedSlug, StringComparison.OrdinalIgnoreCase));
+        }
+
+        await LoadUserStateAsync();
+    }
+
+    /// <summary>Loads the starred and recently used endpoints for the signed-in user.</summary>
+    private async Task LoadUserStateAsync()
+    {
+        if (_definition is null || _user.UserId is null)
+        {
+            _favorites = [];
+            _recents = [];
+            return;
+        }
+
+        _favorites = await UserEndpointService.GetFavoriteSlugsAsync(_definition.Id, _user.UserId);
+        _recents = await UserEndpointService.GetRecentSlugsAsync(_definition.Id, _user.UserId, 8);
+    }
+
+    private async Task ToggleFavoriteAsync(string slug)
+    {
+        if (_definition is null || _user.UserId is null)
+        {
+            return;
+        }
+
+        await UserEndpointService.ToggleFavoriteAsync(_definition.Id, slug, _user.UserId);
+        _favorites = await UserEndpointService.GetFavoriteSlugsAsync(_definition.Id, _user.UserId);
+    }
+
+    /// <summary>
+    /// Splits "host/path/endpoint/slug" into the API route and the operation slug.
+    /// </summary>
+    /// <remarks>
+    /// The last occurrence is used so that an API whose own path contains "endpoint" still
+    /// resolves; only the trailing marker is treated as the link suffix.
+    /// </remarks>
+    internal static (string RouteTail, string? Slug) SplitEndpointLink(string target)
+    {
+        const string marker = "/endpoint/";
+        var index = target.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+
+        if (index < 0)
+        {
+            return (target, null);
+        }
+
+        var slug = target[(index + marker.Length)..].Trim('/');
+
+        return slug.Length == 0 || slug.Contains('/')
+            ? (target, null)
+            : (target[..index], slug);
+    }
+
+    private void SelectOperation(string slug)
+    {
+        _selectedSlug = slug;
+        _selectedOperation = _dashboard?.Operations
+            .FirstOrDefault(o => string.Equals(o.Slug, slug, StringComparison.OrdinalIgnoreCase));
+
+        // Both responses belong to the endpoint that produced them; carrying them to another
+        // endpoint would offer a comparison between two unrelated calls.
+        _response = null;
+        _previousResponse = null;
+
+        // On a narrow screen the point of picking an endpoint is to see its request form.
+        _pane = "detail";
+
+        // Picking a single endpoint leaves the bulk view; the two share the centre panel.
+        _sweepOpen = false;
+    }
+
+    private void ToggleSweep()
+    {
+        _sweepOpen = !_sweepOpen;
+        _pane = _sweepOpen ? "detail" : "list";
+    }
+
+    private void ChangeEnvironment(string environment)
+    {
+        _environment = environment;
+    }
+
+    private async Task OnExecuted(ProxyResponse? response)
+    {
+        _executing = response is null;
+
+        // A null response marks the start of a call: the one on screen becomes the baseline
+        // the next result is compared against.
+        if (response is null)
+        {
+            _previousResponse = _response ?? _previousResponse;
+        }
+
+        _response = response;
+
+        // A finished call changes what "recently used" means, so the shortcut list is
+        // refreshed rather than waiting for the next page load.
+        if (response is not null)
+        {
+            // A finished call is the moment the answer matters, so the narrow layout moves to
+            // it instead of leaving the user to scroll for the result they just asked for.
+            _pane = "response";
+            await LoadUserStateAsync();
+        }
+    }
+
+    private string LoginLink()
+    {
+        var returnUrl = Uri.EscapeDataString(new Uri(Navigation.Uri).PathAndQuery);
+        return $"/login?returnUrl={returnUrl}";
+    }
+}
