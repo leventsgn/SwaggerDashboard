@@ -106,7 +106,15 @@ public class OpenApiDocumentService : IOpenApiDocumentService
     /// </remarks>
     internal static IEnumerable<Uri> BuildCandidates(Uri swaggerUrl, IReadOnlyList<string> probePaths)
     {
+        // Each candidate is a request to somebody else's server, and the same address is
+        // reachable by more than one of the rules below, so repeats are dropped.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        Uri? Once(Uri? candidate) =>
+            candidate is not null && seen.Add(candidate.AbsoluteUri) ? candidate : null;
+
         yield return swaggerUrl;
+        seen.Add(swaggerUrl.AbsoluteUri);
 
         var path = swaggerUrl.AbsolutePath;
         var lastSlash = path.LastIndexOf('/');
@@ -119,26 +127,43 @@ public class OpenApiDocumentService : IOpenApiDocumentService
             foreach (var probe in probePaths)
             {
                 var trimmed = probe.TrimStart('/');
-                if (Uri.TryCreate(swaggerUrl, $"{directory}/{trimmed}", out var candidate))
+
+                if (Uri.TryCreate(swaggerUrl, $"{directory}/{trimmed}", out var candidate) &&
+                    Once(candidate) is { } direct)
                 {
-                    yield return candidate;
+                    yield return direct;
                 }
 
-                // /swagger + /swagger/v1/swagger.json would double the segment, so also try
-                // the probe path anchored at the directory's parent.
-                if (trimmed.StartsWith(directory.TrimStart('/') + "/", StringComparison.OrdinalIgnoreCase) &&
-                    Uri.TryCreate(swaggerUrl, "/" + trimmed, out var rooted))
+                // The directory usually already ends with the probe's first segment, because
+                // the UI page and the document sit side by side: "/swagger/index.html" next to
+                // "/swagger/v1/swagger.json". Joining them blindly doubles that segment, so the
+                // probe is also tried one level up.
+                //
+                // The parent has to be computed rather than assumed to be the host root: an
+                // API published under a path prefix — "/Denemeapi/swagger/index.html", which is
+                // what a reverse proxy in front of several services produces — has its document
+                // at "/Denemeapi/swagger/v1/swagger.json", and anchoring at the root looked for
+                // it at "/swagger/v1/swagger.json" on the wrong application entirely.
+                var firstSegment = trimmed.Split('/')[0];
+
+                if (directory.EndsWith("/" + firstSegment, StringComparison.OrdinalIgnoreCase))
                 {
-                    yield return rooted;
+                    var parent = directory[..^(firstSegment.Length + 1)];
+
+                    if (Uri.TryCreate(swaggerUrl, $"{parent}/{trimmed}", out var deduped) &&
+                        Once(deduped) is { } withoutDoubling)
+                    {
+                        yield return withoutDoubling;
+                    }
                 }
             }
         }
 
         foreach (var probe in probePaths)
         {
-            if (Uri.TryCreate(swaggerUrl, probe, out var candidate))
+            if (Uri.TryCreate(swaggerUrl, probe, out var candidate) && Once(candidate) is { } rooted)
             {
-                yield return candidate;
+                yield return rooted;
             }
         }
     }

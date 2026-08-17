@@ -71,3 +71,73 @@ public class SwaggerUrlNormalizerTests
         Assert.Equal("http://api.company.com/swagger", SwaggerUrlNormalizer.ToRouteTail(uri));
     }
 }
+
+
+/// <summary>
+/// Which addresses are tried when the user pastes a Swagger UI page rather than the document.
+/// </summary>
+public class DocumentDiscoveryTests
+{
+    private static readonly string[] Probes =
+    [
+        "/swagger/v1/swagger.json",
+        "/swagger/swagger.json",
+        "/openapi/v1.json",
+        "/openapi.json",
+        "/swagger/v1/swagger.yaml",
+    ];
+
+    private static List<string> Candidates(string pastedUrl) =>
+        SwaggerDashboard.Infrastructure.Services.OpenApiDocumentService
+            .BuildCandidates(new Uri(pastedUrl), Probes)
+            .Select(u => u.AbsolutePath)
+            .ToList();
+
+    [Fact]
+    public void The_document_next_to_the_ui_page_is_tried()
+    {
+        Assert.Contains(
+            "/swagger/v1/swagger.json",
+            Candidates("https://api.company.com/swagger/index.html"));
+    }
+
+    [Fact]
+    public void An_api_behind_a_path_prefix_is_found_without_doubling_the_segment()
+    {
+        // A reverse proxy in front of several services publishes each one under its own
+        // prefix, so the UI page is at /Denemeapi/swagger/index.html and the document at
+        // /Denemeapi/swagger/v1/swagger.json. Joining the probe to the directory doubled
+        // "swagger", and the fallback anchored at the host root looked on the wrong
+        // application, so the API could not be registered from the address the user has.
+        var candidates = Candidates("https://dasist.cen.deneme.local/Denemeapi/swagger/index.html");
+
+        Assert.Contains("/Denemeapi/swagger/v1/swagger.json", candidates);
+        Assert.Contains("/Denemeapi/swagger/v1/swagger.yaml", candidates);
+    }
+
+    [Fact]
+    public void A_prefixed_openapi_layout_is_covered_too()
+    {
+        Assert.Contains(
+            "/Denemeapi/openapi/v1.json",
+            Candidates("https://dasist.cen.deneme.local/Denemeapi/openapi/index.html"));
+    }
+
+    [Fact]
+    public void The_pasted_address_is_always_tried_first()
+    {
+        var candidates = Candidates("https://api.company.com/custom/place/openapi.json");
+
+        Assert.Equal("/custom/place/openapi.json", candidates[0]);
+    }
+
+    [Fact]
+    public void The_same_address_is_never_requested_twice()
+    {
+        // Every candidate is a request to somebody else's server, and several rules reach
+        // the same address for a UI page sitting directly under /swagger.
+        var candidates = Candidates("https://api.company.com/swagger/index.html");
+
+        Assert.Equal(candidates.Count, candidates.Distinct().Count());
+    }
+}
