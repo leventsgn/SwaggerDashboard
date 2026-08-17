@@ -23,6 +23,15 @@
         </div>
     }
 
+    @* The credential is stored per user and API, so this is the same one the endpoint
+       screen uses. Until it was here as well, a protected API could only be authenticated
+       from an endpoint screen and a bulk run of one came back as a wall of 401s with
+       nothing on this screen explaining why. *@
+    @if (Dashboard is not null && Dashboard.SecuritySchemes.Count > 0)
+    {
+        <AuthPanel ApiDefinitionId="Definition.Id" Dashboard="Dashboard" UserId="@UserId" />
+    }
+
     <div class="sd-sweep-options">
         <label class="sd-check">
             <input type="checkbox" checked="@ReadOnlyOnly" disabled="@_running" @onchange="ToggleReadOnly" />
@@ -103,6 +112,12 @@
 @code {
     [Parameter, EditorRequired]
     public ApiDefinition Definition { get; set; } = default!;
+
+    /// <summary>
+    /// The generated dashboard, used to offer the security schemes the document declares.
+    /// </summary>
+    [Parameter]
+    public SwaggerDashboard.Application.Dashboards.DashboardDocument? Dashboard { get; set; }
 
     [Parameter]
     public string? Environment { get; set; }

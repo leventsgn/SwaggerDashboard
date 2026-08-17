@@ -25,6 +25,7 @@ public class ApiProxyService : IApiProxyService
     private readonly IApiCredentialStore _credentialStore;
     private readonly IUserService _userService;
     private readonly IOAuthTokenService _tokenService;
+    private readonly ILoginTokenService _loginTokenService;
     private readonly IResponseDownloadStore _downloadStore;
     private readonly GuardedHttpSender _sender;
     private readonly IRequestLogService _logService;
@@ -37,6 +38,7 @@ public class ApiProxyService : IApiProxyService
         IApiCredentialStore credentialStore,
         IUserService userService,
         IOAuthTokenService tokenService,
+        ILoginTokenService loginTokenService,
         IResponseDownloadStore downloadStore,
         GuardedHttpSender sender,
         IRequestLogService logService,
@@ -48,6 +50,7 @@ public class ApiProxyService : IApiProxyService
         _credentialStore = credentialStore;
         _userService = userService;
         _tokenService = tokenService;
+        _loginTokenService = loginTokenService;
         _downloadStore = downloadStore;
         _sender = sender;
         _logService = logService;
@@ -104,13 +107,16 @@ public class ApiProxyService : IApiProxyService
             ? null
             : _credentialStore.Get(request.UserId, definition.Id);
 
-        // A client credentials grant is exchanged for a bearer token before the request is
-        // built, so the builder stays a pure function of its inputs and knows only one way to
-        // put a token on a request.
-        if (credential is { Kind: ApiAuthKind.OAuth2ClientCredentials })
+        // Anything that has to be exchanged for a token is exchanged here, before the request
+        // is built, so the builder stays a pure function of its inputs and knows only one way
+        // to put a token on a request.
+        if (credential is { Kind: ApiAuthKind.OAuth2ClientCredentials or ApiAuthKind.LoginEndpoint })
         {
-            var token = await _tokenService.GetTokenAsync(
-                $"{request.UserId}:{definition.Id}", credential, cancellationToken);
+            var cacheKey = $"{request.UserId}:{definition.Id}";
+
+            var token = credential.Kind == ApiAuthKind.OAuth2ClientCredentials
+                ? await _tokenService.GetTokenAsync(cacheKey, credential, cancellationToken)
+                : await _loginTokenService.GetTokenAsync(cacheKey, credential, cancellationToken);
 
             if (!token.Success)
             {

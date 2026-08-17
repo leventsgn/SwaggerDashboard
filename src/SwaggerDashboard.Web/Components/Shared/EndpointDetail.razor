@@ -5,7 +5,6 @@
 @inject IApiProxyService ProxyService
 @inject ISavedRequestService SavedRequestService
 @inject IRequestLogService LogService
-@inject IApiCredentialStore CredentialStore
 @inject CurrentUserAccessor CurrentUserAccessor
 @inject NavigationManager Navigation
 @inject IJSRuntime Js
@@ -169,72 +168,10 @@
 
     @if (Operation.RequiresAuthentication || Dashboard.SecuritySchemes.Count > 0)
     {
-        <section class="sd-section">
-            <h4>Kimlik doğrulama</h4>
-            <div class="sd-auth">
-                <select class="form-select form-select-sm" value="@_authKind" @onchange="ChangeAuthKind">
-                    <option value="@ApiAuthKind.None">Yok</option>
-                    <option value="@ApiAuthKind.Bearer">Bearer token</option>
-                    <option value="@ApiAuthKind.Basic">Basic</option>
-                    <option value="@ApiAuthKind.ApiKey">API Key</option>
-                    <option value="@ApiAuthKind.OAuth2ClientCredentials">OAuth2 (client credentials)</option>
-                </select>
-
-                @if (_authKind == ApiAuthKind.Basic)
-                {
-                    <input class="form-control form-control-sm" placeholder="Kullanıcı adı"
-                           value="@_authUserName" @onchange="e => _authUserName = e.Value?.ToString() ?? string.Empty" />
-                }
-
-                @if (_authKind == ApiAuthKind.ApiKey)
-                {
-                    <input class="form-control form-control-sm" placeholder="Parametre adı (ör. X-Api-Key)"
-                           value="@_authParameterName" @onchange="e => _authParameterName = e.Value?.ToString() ?? string.Empty" />
-                    <select class="form-select form-select-sm" value="@_authParameterIn"
-                            @onchange="OnAuthParameterInChanged">
-                        <option value="header">header</option>
-                        <option value="query">query</option>
-                    </select>
-                }
-
-                @if (_authKind == ApiAuthKind.OAuth2ClientCredentials)
-                {
-                    <input class="form-control form-control-sm" placeholder="Token adresi"
-                           value="@_authTokenUrl" @onchange="e => _authTokenUrl = e.Value?.ToString() ?? string.Empty" />
-                    <input class="form-control form-control-sm" placeholder="Client ID"
-                           value="@_authUserName" @onchange="e => _authUserName = e.Value?.ToString() ?? string.Empty" />
-                    <input class="form-control form-control-sm" placeholder="Scope (isteğe bağlı)"
-                           value="@_authScope" @onchange="e => _authScope = e.Value?.ToString() ?? string.Empty" />
-                }
-
-                @if (_authKind != ApiAuthKind.None)
-                {
-                    <input class="form-control form-control-sm" type="password"
-                           placeholder="@(_authKind == ApiAuthKind.OAuth2ClientCredentials ? "Client secret" : "Değer")"
-                           value="@_authSecret" @onchange="e => _authSecret = e.Value?.ToString() ?? string.Empty" />
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="SaveCredential">
-                        @(_credentialSaved ? "Kaydedildi" : "Oturuma kaydet")
-                    </button>
-                }
-            </div>
-            @if (_authKind == ApiAuthKind.OAuth2ClientCredentials)
-            {
-                <p class="sd-field-help">
-                    Token'ı platform kendisi alır (grant_type=client_credentials) ve isteğe bearer
-                    olarak ekler; süresi dolana kadar bellekte tutulur. Token adresi de diğer
-                    hedefler gibi whitelist ve SSRF kontrolünden geçer. Tarayıcıya yalnızca
-                    yanıt döner, client secret hiçbir zaman gönderilmez.
-                </p>
-            }
-
-            <p class="sd-field-help">
-                Girilen değer yalnızca sunucu belleğinde, oturumunuza bağlı olarak tutulur; veritabanına yazılmaz.
-                @if (Operation.SecuritySchemeKeys.Count > 0)
-                {
-                    <span>Bu endpoint şu şemaları istiyor: <code>@string.Join(", ", Operation.SecuritySchemeKeys)</code>.</span>
-                }
-            </p>
-        </section>
+        <AuthPanel ApiDefinitionId="Definition.Id"
+                   Dashboard="Dashboard"
+                   UserId="@UserId"
+                   RequiredSchemes="Operation.SecuritySchemeKeys" />
     }
 
     <div class="sd-actions">
@@ -401,7 +338,6 @@
     private bool _rawMode;
     private bool _executing;
     private bool _shareCopied;
-    private bool _credentialSaved;
 
     private IReadOnlyList<SavedRequest> _saved = [];
     private string _saveName = string.Empty;
@@ -414,13 +350,6 @@
 
     private IReadOnlyList<ApiRequestLog> _history = [];
 
-    private ApiAuthKind _authKind = ApiAuthKind.None;
-    private string _authSecret = string.Empty;
-    private string _authUserName = string.Empty;
-    private string _authParameterName = "X-Api-Key";
-    private string _authParameterIn = "header";
-    private string _authTokenUrl = string.Empty;
-    private string _authScope = string.Empty;
 
     private bool IsFileUpload =>
         _contentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase);
@@ -501,7 +430,6 @@
     protected override async Task OnInitializedAsync()
     {
         BuildForm(fill: true);
-        LoadStoredCredential();
         await LoadSavedListAsync();
     }
 
@@ -898,102 +826,6 @@
                                  (p.Schema.Type == SchemaTypes.Array && p.Schema.Items?.Format == "binary"));
 
         return binaryProperty?.Name ?? "file";
-    }
-
-    private void OnAuthParameterInChanged(ChangeEventArgs args)
-    {
-        var value = args.Value?.ToString();
-        _authParameterIn = string.IsNullOrWhiteSpace(value) ? "header" : value;
-    }
-
-    private void ChangeAuthKind(ChangeEventArgs args)
-    {
-        _authKind = Enum.TryParse<ApiAuthKind>(args.Value?.ToString(), out var kind) ? kind : ApiAuthKind.None;
-        _credentialSaved = false;
-
-        if (_authKind == ApiAuthKind.ApiKey)
-        {
-            var scheme = Dashboard.SecuritySchemes
-                .FirstOrDefault(s => s.Type.Equals("apiKey", StringComparison.OrdinalIgnoreCase));
-
-            if (scheme is not null)
-            {
-                _authParameterName = scheme.ParameterName ?? _authParameterName;
-                _authParameterIn = scheme.In ?? _authParameterIn;
-            }
-        }
-
-        // The document usually names the token endpoint and the scopes; offering them saves
-        // the user a trip to the swagger file. They stay editable — the document can be wrong
-        // or out of date, and the value is validated before anything is sent to it.
-        if (_authKind == ApiAuthKind.OAuth2ClientCredentials)
-        {
-            var scheme = Dashboard.SecuritySchemes
-                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.TokenUrl));
-
-            if (scheme is not null)
-            {
-                _authTokenUrl = string.IsNullOrWhiteSpace(_authTokenUrl) ? scheme.TokenUrl! : _authTokenUrl;
-
-                if (string.IsNullOrWhiteSpace(_authScope) && scheme.Scopes.Count > 0)
-                {
-                    _authScope = string.Join(' ', scheme.Scopes);
-                }
-            }
-        }
-    }
-
-    private void LoadStoredCredential()
-    {
-        if (UserId is null)
-        {
-            return;
-        }
-
-        var stored = CredentialStore.Get(UserId, Definition.Id);
-        if (stored is null)
-        {
-            return;
-        }
-
-        _authKind = stored.Kind;
-        _authUserName = stored.UserName ?? string.Empty;
-        _authParameterName = stored.ParameterName ?? _authParameterName;
-        _authParameterIn = stored.ParameterIn ?? _authParameterIn;
-        _authTokenUrl = stored.TokenUrl ?? string.Empty;
-        _authScope = stored.Scope ?? string.Empty;
-        _credentialSaved = true;
-
-        // The secret itself is not read back into the form; it stays server side.
-    }
-
-    private void SaveCredential()
-    {
-        if (UserId is null)
-        {
-            return;
-        }
-
-        if (_authKind == ApiAuthKind.None)
-        {
-            CredentialStore.Clear(UserId, Definition.Id);
-            _credentialSaved = false;
-            return;
-        }
-
-        CredentialStore.Set(UserId, Definition.Id, new ApiCredential
-        {
-            Kind = _authKind,
-            Secret = _authSecret,
-            UserName = _authUserName,
-            ParameterName = _authParameterName,
-            ParameterIn = _authParameterIn,
-            TokenUrl = _authTokenUrl,
-            Scope = _authScope,
-        });
-
-        _authSecret = string.Empty;
-        _credentialSaved = true;
     }
 
     /// <summary>

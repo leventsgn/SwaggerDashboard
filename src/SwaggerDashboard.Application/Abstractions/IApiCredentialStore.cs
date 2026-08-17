@@ -37,11 +37,33 @@ public record ApiCredential
     /// <summary>header or query.</summary>
     public string? ParameterIn { get; init; }
 
-    /// <summary>OAuth2 token endpoint for the client credentials flow.</summary>
+    /// <summary>
+    /// Where a token is fetched from: the OAuth2 token endpoint, or the API's own login
+    /// endpoint.
+    /// </summary>
     public string? TokenUrl { get; init; }
 
     /// <summary>Optional space separated scopes requested with the token.</summary>
     public string? Scope { get; init; }
+
+    /// <summary>
+    /// Field names for <see cref="ApiAuthKind.LoginEndpoint"/>, when the API does not use
+    /// the usual ones.
+    /// </summary>
+    /// <remarks>
+    /// A login endpoint is an ordinary endpoint of the API rather than a standard, so every
+    /// API names these differently: kullaniciAdi/sifre, email/password, user/pass. The
+    /// defaults cover the common spellings and these exist for the ones they miss.
+    /// </remarks>
+    public string? LoginUserField { get; init; }
+
+    public string? LoginPasswordField { get; init; }
+
+    /// <summary>
+    /// Which field of the login response holds the token, when it cannot be recognised.
+    /// Dotted paths are allowed, e.g. <c>data.accessToken</c>.
+    /// </summary>
+    public string? TokenField { get; init; }
 }
 
 public enum ApiAuthKind
@@ -61,4 +83,16 @@ public enum ApiAuthKind
     /// becoming an identity client in its own right.
     /// </remarks>
     OAuth2ClientCredentials = 4,
+
+    /// <summary>
+    /// The API's own login endpoint: the platform posts a user name and password to it,
+    /// reads the token out of the answer and sends it as a bearer.
+    /// </summary>
+    /// <remarks>
+    /// Most internal APIs authenticate this way rather than through an identity server, and
+    /// without this the user had to sign in by hand somewhere else, copy the token and paste
+    /// it as a bearer — which expires mid-session and made a bulk run of a protected API
+    /// effectively impossible.
+    /// </remarks>
+    LoginEndpoint = 5,
 }

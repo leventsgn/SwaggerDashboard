@@ -737,6 +737,23 @@ code, pre, .sd-code {
     flex: 1 1 10rem;
 }
 
+/* An address is the longest value on the row by far, so it gets a wider basis and wraps the
+   shorter fields onto the next line rather than being cut off mid-host. */
+.sd-auth input[type="url"],
+.sd-auth input[placeholder*="adres"] {
+    flex: 2 1 22rem;
+}
+
+/* The button is as wide as its label; letting it grow made it span a whole row of its own
+   whenever the fields ahead of it wrapped. */
+.sd-auth button {
+    flex: 0 0 auto;
+}
+
+.sd-auth-advanced {
+    margin-top: var(--sd-2);
+}
+
 .sd-actions {
     display: flex;
     align-items: center;

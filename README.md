@@ -441,10 +441,39 @@ Hedef API'nin token/parola/API key değerleri **yalnızca sunucu belleğinde**, 
 başına, kayan bir süreyle tutulur. Veritabanına yazılmaz ve tarayıcıya gönderilmez. Bunlar
 dashboard kullanıcısının kimliğinden ayrıdır.
 
-Desteklenen yöntemler: Bearer token, Basic, API Key ve **OAuth2 client credentials**.
+Desteklenen yöntemler: Bearer token, Basic, API Key, **login endpoint** ve **OAuth2 client
+credentials**.
 
-OAuth2'de token'ı platform kendisi alır (`grant_type=client_credentials`) ve isteğe bearer
-olarak ekler:
+Kimlik bilgisi kullanıcı ve API başına saklanır, ekran başına değil: endpoint ekranında
+girildiğinde toplu çalıştırma da onu kullanır, tersi de geçerli. Her iki ekranda da aynı
+form vardır (`AuthPanel`). Bu olmadan korumalı bir API'nin toplu çalıştırması, kimlik
+girilecek yer bulunmadığı için bir duvar dolusu 401 ile dönüyordu.
+
+#### Login endpoint
+
+Çoğu iç API kimlik sunucusu yerine kendi login endpoint'ini kullanır. Platform bu adrese
+kullanıcı adı ve parolayı JSON gövdeyle POST eder, yanıttaki token'ı bulur ve isteklere
+`Authorization: Bearer <token>` olarak ekler:
+
+- **İstek alan adları ayarlanabilir** (varsayılan `username` / `password`). Login endpoint bir
+  standart değil, API'nin sıradan bir endpoint'i; adları yazarları ne koyduysa odur
+  (`kullaniciAdi`/`sifre`, `email`/`password`).
+- **Yanıttaki token tanınır.** `access_token`, `accessToken`, `token`, `jwt`, `id_token`,
+  `authToken` alanları ve `data`/`result`/`payload` sarmalayıcıları (tek seviye) aranır;
+  gövdenin tamamı token olan yanıtlar da kabul edilir. Tanınmazsa kullanıcı alan adını yazar
+  (`data.accessToken` gibi noktalı yol) ve o zaman **yalnızca** o yol okunur — tahmin
+  düzeltilmişken yeniden tahmin etmek başarısız olmaktan kötüdür.
+- Token'ın ömrü yanıttaki `expires_in`'den, yoksa JWT'nin `exp` alanından okunur, o da yoksa
+  5 dakika varsayılır. Token doğrulanmaz; ondan okunan tek şey ne kadar süre yeniden
+  kullanılacağıdır, dolayısıyla sahte bir `exp` en fazla fazladan bir girişe mal olur.
+- Token süresi dolana kadar bellekte tutulur, yani 200 endpointlik bir tarama **tek** giriş
+  yapar. Cache anahtarı parolanın özetini içerir: yanlış yazılan parola düzeltildiğinde
+  eskisiyle alınmış token geri verilmez.
+- Login adresi de diğer hedefler gibi whitelist ve SSRF kontrolünden geçer.
+
+#### OAuth2 client credentials
+
+Token'ı platform kendisi alır (`grant_type=client_credentials`) ve isteğe bearer olarak ekler:
 
 - **Yalnızca client credentials akışı desteklenir.** Diğer akışlar tarayıcı yönlendirmesi ve
   onay ekranıyla biter; sunucu tarafında çalışan bir test aracı bunu kullanıcı adına

@@ -1,0 +1,257 @@
+@using SwaggerDashboard.Application.Dashboards
+@inject IApiCredentialStore CredentialStore
+
+@* Shared by the endpoint screen and the bulk run. The credential is stored per user and API
+   rather than per screen, so whichever screen it is entered on, the other one uses it — a
+   bulk run against a protected API used to be impossible because only the endpoint screen
+   could enter one, and nothing on the bulk screen said so. *@
+
+<section class="sd-section">
+    <h4>Kimlik doğrulama</h4>
+
+    <div class="sd-auth">
+        <select class="form-select form-select-sm" value="@_kind" @onchange="ChangeKind">
+            <option value="@ApiAuthKind.None">Yok</option>
+            <option value="@ApiAuthKind.Bearer">Bearer token</option>
+            <option value="@ApiAuthKind.Basic">Basic</option>
+            <option value="@ApiAuthKind.ApiKey">API Key</option>
+            <option value="@ApiAuthKind.LoginEndpoint">Login endpoint (kullanıcı adı + parola)</option>
+            <option value="@ApiAuthKind.OAuth2ClientCredentials">OAuth2 (client credentials)</option>
+        </select>
+
+        @if (_kind == ApiAuthKind.Basic)
+        {
+            <input class="form-control form-control-sm" placeholder="Kullanıcı adı"
+                   value="@_userName" @onchange="e => _userName = Text(e)" />
+        }
+
+        @if (_kind == ApiAuthKind.ApiKey)
+        {
+            <input class="form-control form-control-sm" placeholder="Parametre adı (ör. X-Api-Key)"
+                   value="@_parameterName" @onchange="e => _parameterName = Text(e)" />
+            <select class="form-select form-select-sm" value="@_parameterIn" @onchange="OnParameterInChanged">
+                <option value="header">header</option>
+                <option value="query">query</option>
+            </select>
+        }
+
+        @if (_kind == ApiAuthKind.LoginEndpoint)
+        {
+            <input class="form-control form-control-sm" placeholder="Login adresi (ör. https://.../api/auth/login)"
+                   value="@_tokenUrl" @onchange="e => _tokenUrl = Text(e)" />
+            <input class="form-control form-control-sm" placeholder="Kullanıcı adı"
+                   value="@_userName" @onchange="e => _userName = Text(e)" />
+        }
+
+        @if (_kind == ApiAuthKind.OAuth2ClientCredentials)
+        {
+            <input class="form-control form-control-sm" placeholder="Token adresi"
+                   value="@_tokenUrl" @onchange="e => _tokenUrl = Text(e)" />
+            <input class="form-control form-control-sm" placeholder="Client ID"
+                   value="@_userName" @onchange="e => _userName = Text(e)" />
+            <input class="form-control form-control-sm" placeholder="Scope (isteğe bağlı)"
+                   value="@_scope" @onchange="e => _scope = Text(e)" />
+        }
+
+        @if (_kind != ApiAuthKind.None)
+        {
+            <input class="form-control form-control-sm" type="password" placeholder="@SecretLabel"
+                   value="@_secret" @onchange="e => _secret = Text(e)" />
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Save">
+                @(_saved ? "Kaydedildi" : "Oturuma kaydet")
+            </button>
+        }
+    </div>
+
+    @if (_kind == ApiAuthKind.LoginEndpoint)
+    {
+        <div class="sd-auth sd-auth-advanced">
+            @* Only shown for this kind: a login endpoint is an ordinary endpoint of the API
+               rather than a standard, so the field names are whatever its authors chose. *@
+            <input class="form-control form-control-sm" placeholder="İstek kullanıcı alanı (varsayılan: username)"
+                   value="@_loginUserField" @onchange="e => _loginUserField = Text(e)" />
+            <input class="form-control form-control-sm" placeholder="İstek parola alanı (varsayılan: password)"
+                   value="@_loginPasswordField" @onchange="e => _loginPasswordField = Text(e)" />
+            <input class="form-control form-control-sm" placeholder="Token alanı (ör. data.accessToken)"
+                   value="@_tokenField" @onchange="e => _tokenField = Text(e)" />
+        </div>
+
+        <p class="sd-field-help">
+            Platform bu adrese <code>{"@(FieldOr(_loginUserField, "username"))": "...", "@(FieldOr(_loginPasswordField, "password"))": "..."}</code>
+            gövdesiyle POST atar, yanıttaki token'ı bulur ve isteklere
+            <code>Authorization: Bearer &lt;token&gt;</code> olarak ekler. Token süresi
+            dolana kadar bellekte tutulur, dolunca yeniden giriş yapılır.
+            Yanıttaki <code>access_token</code>, <code>accessToken</code>, <code>token</code>,
+            <code>jwt</code> gibi alanlar ve <code>data</code>/<code>result</code> sarmalayıcıları
+            kendiliğinden tanınır; tanınmazsa alan adını yukarıya yazın.
+        </p>
+    }
+
+    @if (_kind == ApiAuthKind.OAuth2ClientCredentials)
+    {
+        <p class="sd-field-help">
+            Token'ı platform kendisi alır (grant_type=client_credentials) ve isteğe bearer
+            olarak ekler; süresi dolana kadar bellekte tutulur. Token adresi de diğer
+            hedefler gibi whitelist ve SSRF kontrolünden geçer.
+        </p>
+    }
+
+    <p class="sd-field-help">
+        Girilen değer yalnızca sunucu belleğinde, oturumunuza bağlı olarak tutulur; veritabanına
+        yazılmaz ve tarayıcıya geri gönderilmez. Bu API'nin bütün ekranlarında geçerlidir —
+        toplu çalıştırma dahil.
+        @if (RequiredSchemes is { Count: > 0 })
+        {
+            <span>Bu endpoint şu şemaları istiyor: <code>@string.Join(", ", RequiredSchemes)</code>.</span>
+        }
+    </p>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public int ApiDefinitionId { get; set; }
+
+    [Parameter]
+    public DashboardDocument? Dashboard { get; set; }
+
+    [Parameter]
+    public string? UserId { get; set; }
+
+    /// <summary>Security scheme names the current endpoint declares, when there is one.</summary>
+    [Parameter]
+    public IReadOnlyList<string>? RequiredSchemes { get; set; }
+
+    private ApiAuthKind _kind = ApiAuthKind.None;
+    private string _secret = string.Empty;
+    private string _userName = string.Empty;
+    private string _parameterName = "X-Api-Key";
+    private string _parameterIn = "header";
+    private string _tokenUrl = string.Empty;
+    private string _scope = string.Empty;
+    private string _loginUserField = string.Empty;
+    private string _loginPasswordField = string.Empty;
+    private string _tokenField = string.Empty;
+    private bool _saved;
+
+    private string SecretLabel => _kind switch
+    {
+        ApiAuthKind.OAuth2ClientCredentials => "Client secret",
+        ApiAuthKind.LoginEndpoint => "Parola",
+        ApiAuthKind.Basic => "Parola",
+        _ => "Değer",
+    };
+
+    protected override void OnInitialized() => LoadStored();
+
+    private static string Text(ChangeEventArgs args) => args.Value?.ToString() ?? string.Empty;
+
+    private static string FieldOr(string value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+    private void OnParameterInChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        _parameterIn = string.IsNullOrWhiteSpace(value) ? "header" : value;
+    }
+
+    private void ChangeKind(ChangeEventArgs args)
+    {
+        _kind = Enum.TryParse<ApiAuthKind>(args.Value?.ToString(), out var kind) ? kind : ApiAuthKind.None;
+        _saved = false;
+
+        if (Dashboard is null)
+        {
+            return;
+        }
+
+        if (_kind == ApiAuthKind.ApiKey)
+        {
+            var scheme = Dashboard.SecuritySchemes
+                .FirstOrDefault(s => s.Type.Equals("apiKey", StringComparison.OrdinalIgnoreCase));
+
+            if (scheme is not null)
+            {
+                _parameterName = scheme.ParameterName ?? _parameterName;
+                _parameterIn = scheme.In ?? _parameterIn;
+            }
+        }
+
+        // The document usually names the token endpoint and the scopes; offering them saves
+        // the user a trip to the swagger file. They stay editable — the document can be wrong
+        // or out of date, and the value is validated before anything is sent to it.
+        if (_kind == ApiAuthKind.OAuth2ClientCredentials)
+        {
+            var scheme = Dashboard.SecuritySchemes
+                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.TokenUrl));
+
+            if (scheme is not null)
+            {
+                _tokenUrl = string.IsNullOrWhiteSpace(_tokenUrl) ? scheme.TokenUrl! : _tokenUrl;
+
+                if (string.IsNullOrWhiteSpace(_scope) && scheme.Scopes.Count > 0)
+                {
+                    _scope = string.Join(' ', scheme.Scopes);
+                }
+            }
+        }
+    }
+
+    private void LoadStored()
+    {
+        if (UserId is null)
+        {
+            return;
+        }
+
+        var stored = CredentialStore.Get(UserId, ApiDefinitionId);
+        if (stored is null)
+        {
+            return;
+        }
+
+        _kind = stored.Kind;
+        _userName = stored.UserName ?? string.Empty;
+        _parameterName = stored.ParameterName ?? _parameterName;
+        _parameterIn = stored.ParameterIn ?? _parameterIn;
+        _tokenUrl = stored.TokenUrl ?? string.Empty;
+        _scope = stored.Scope ?? string.Empty;
+        _loginUserField = stored.LoginUserField ?? string.Empty;
+        _loginPasswordField = stored.LoginPasswordField ?? string.Empty;
+        _tokenField = stored.TokenField ?? string.Empty;
+        _saved = true;
+
+        // The secret itself is not read back into the form; it stays server side.
+    }
+
+    private void Save()
+    {
+        if (UserId is null)
+        {
+            return;
+        }
+
+        if (_kind == ApiAuthKind.None)
+        {
+            CredentialStore.Clear(UserId, ApiDefinitionId);
+            _saved = false;
+            return;
+        }
+
+        CredentialStore.Set(UserId, ApiDefinitionId, new ApiCredential
+        {
+            Kind = _kind,
+            Secret = _secret,
+            UserName = _userName,
+            ParameterName = _parameterName,
+            ParameterIn = _parameterIn,
+            TokenUrl = _tokenUrl,
+            Scope = _scope,
+            LoginUserField = _loginUserField,
+            LoginPasswordField = _loginPasswordField,
+            TokenField = _tokenField,
+        });
+
+        _secret = string.Empty;
+        _saved = true;
+    }
+}

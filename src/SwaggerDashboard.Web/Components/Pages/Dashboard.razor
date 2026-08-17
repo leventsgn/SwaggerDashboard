@@ -83,6 +83,7 @@ else if (_dashboard is not null && _definition is not null)
             @if (_sweepOpen)
             {
                 <SweepPanel Definition="_definition"
+                            Dashboard="_dashboard"
                             Environment="@_environment"
                             CanExecute="_user.CanExecute"
                             UserId="@_user.UserId"
