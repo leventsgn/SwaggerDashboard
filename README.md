@@ -139,7 +139,14 @@ zamanla birbirinden ayrışır ve hiçbir şey hizalanmaz.
 - .NET 8 SDK
 - SQL Server (üretim) — geliştirmede SQLite yeterlidir
 
-### Tek tıkla yerelde çalıştırma
+### Hazır paket (Windows, kurulum yok)
+
+Hiçbir şey kurmak istemiyorsanız [`dist/SwaggerDashboard-Windows.zip`](dist/) yeterli:
+zip'i çıkarın, `SwaggerDashboard-Baslat.bat` dosyasına çift tıklayın. Paket kendi .NET
+çalışma zamanını taşır — .NET, Docker veya internet gerekmez. Ayrıntılar
+[`dist/OKU-BENI.md`](dist/OKU-BENI.md) içinde.
+
+### Tek tıkla yerelde çalıştırma (kaynaktan)
 
 | İşletim sistemi | Yapılacak |
 | --- | --- |
